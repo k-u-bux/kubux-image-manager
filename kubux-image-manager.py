@@ -1734,7 +1734,7 @@ class ImageManager(tk.Tk):
 
         self.ui_scale = self.app_settings.get("ui_scale", 1.0)
         self.main_win_geometry = self.app_settings.get("main_win_geometry", "300x400")
-        self.commands = self.app_settings.get("commands", "open {*}\nSetWP {*}\nopen ${HOME}/Pictures")
+        self.commands = self.app_settings.get("commands", "open {*}\nSetWP *\nopen ${HOME}/Pictures")
         self.selected_files = self.app_settings.get("selected_files", [])
         self.new_picker_info = self.app_settings.get("new_picker_info", [ 192, PICTURES_DIR, "1000x600" ])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
