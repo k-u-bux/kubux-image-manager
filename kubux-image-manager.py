@@ -1547,14 +1547,17 @@ class FlexibleTextField(tk.Frame):
         self.text_area.bind("<ButtonRelease-1>", self._on_cursor_move)
         self.text_area.focus_set()
 
+    def _set_index(self, index):
+        self.text_area.mark_set(tk.INSERT, f"{index}.0")
+        self.text_area.see(tk.INSERT)
+        self._on_cursor_move(None)
+        
     def _set_commands(self, commands):
         self.commands = commands
         self.text_area.delete("1.0", tk.END)
         self.text_area.insert("1.0", commands)
-        self.text_area.mark_set(tk.INSERT, "1.0")
-        self.text_area.see(tk.INSERT)
-        self._on_cursor_move(None)
-
+        self._set_index(1)
+        
     def _current_index(self):
         return self.text_area.index(tk.INSERT).split('.')[0]
 
@@ -1695,6 +1698,7 @@ class ImageManager(tk.Tk):
         self.open_picker_dialogs_from_info()
         self.open_images = [] # list of (path, geometry)
         self.open_images_from_info()
+        self.command_field._set_index( self.current_index )
         
     def collect_open_picker_info(self):
         self.open_picker_info = []
@@ -1738,6 +1742,7 @@ class ImageManager(tk.Tk):
         self.ui_scale = self.app_settings.get("ui_scale", 1.0)
         self.main_win_geometry = self.app_settings.get("main_win_geometry", "300x400")
         self.commands = self.app_settings.get("commands", "open {*}\nSetWP *\nopen ${HOME}/Pictures\necho {*} >> /tmp/files")
+        self.current_index = self.app_settings.get("current_index", 1)
         self.selected_files = self.app_settings.get("selected_files", [])
         self.new_picker_info = self.app_settings.get("new_picker_info", [ 192, PICTURES_DIR, "1000x600" ])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
@@ -1751,6 +1756,7 @@ class ImageManager(tk.Tk):
             self.app_settings["ui_scale"] = self.ui_scale
             self.app_settings["main_win_geometry"] = self.geometry()
             self.app_settings["commands"] = self.command_field.current_text()
+            self.app_settings["current_index"] = self.command_field._current_index()
             self.app_settings["selected_files"] = self.selected_files
             self.app_settings["new_picker_info"] = self.new_picker_info
             self.app_settings["open_picker_info"] = self.collect_open_picker_info()
