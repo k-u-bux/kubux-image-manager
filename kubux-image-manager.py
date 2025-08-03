@@ -34,15 +34,6 @@ from tkinter import ttk
 
 import requests
 from PIL import Image, ImageTk
-from dotenv import load_dotenv
-from together import Together
-
-# Load environment variables
-load_dotenv()
-# --- Configuration ---
-TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
-ai_features_enabled = bool(TOGETHER_API_KEY)
-
 
 SUPPORTED_IMAGE_EXTENSIONS = (
     '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tif', '.tiff', '.webp',
@@ -55,9 +46,7 @@ CONFIG_DIR = os.path.join(HOME_DIR, ".config", "kubux-image-manager")
 CACHE_DIR = os.path.join(HOME_DIR, ".cache", "kubux-thumbnail-cache")
 THUMBNAIL_CACHE_ROOT = os.path.join(CACHE_DIR, "thumbnails")
 PICTURES_DIR = os.path.join(HOME_DIR, "Pictures")
-IMAGE_DIR = os.path.join(CONFIG_DIR, "images")
 DEFAULT_THUMBNAIL_DIM = 192
-PROMPT_HISTORY_FILE = os.path.join(CONFIG_DIR, "prompt_history.json")
 APP_SETTINGS_FILE = os.path.join(CONFIG_DIR, "app_settings.json")    
 
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -328,108 +317,6 @@ def custom_message_dialog(parent, title, message, font=("Arial", 12)):
     dialog.wait_window()
 
     
-# --- Together.ai Image Generation ---
-
-def best_dimensions():
-    root = tk.Tk()
-    root.withdraw()
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    ratio = screen_width / screen_height
-    root.destroy()
-    best_h = 20;
-    best_w = best_h * math.ceil(ratio)
-    for w in range(8,46):
-        for h in range(8,46):
-            r = w / h
-            if not r < ratio:
-                if not ( best_w / best_h ) < r:
-                    best_w = w
-                    best_h = h
-    return best_w * 32, best_h * 32
-                
-def good_dimensions(delta=0.05):
-    root = tk.Tk()
-    root.withdraw()
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    ratio = screen_width / screen_height
-    root.destroy()
-    best_h = 20;
-    best_w = best_h * math.ceil(ratio)
-    for w in range(8,46):
-        for h in range(8,46):
-            r = w / h
-            if not r < ratio:
-                if not ratio + delta < r:
-                    best_w = w
-                    best_h = h
-    return best_w * 32, best_h * 32
-                
-ai_width, ai_height = good_dimensions()
-
-# print(f"width = {ai_width}, height = {ai_height}")
-
-def generate_image(prompt, model,
-#                   width=1184, height=736, steps=28,
-#                   width=1248, height=704, # almost 16 : 9
-#                   width=1920, height=1080, # almost 16 : 9
-                   width=ai_width, height=ai_height,
-                   steps=28,
-                   error_callback=fallback_show_error):
-    client = Together(api_key=TOGETHER_API_KEY)
-    try:
-        response = client.images.generate(
-            prompt=prompt,
-            model=model,
-            width=width,
-            height=height,
-            steps=steps
-        )
-        return response.data[0].url
-    except Exception as e:
-        message = f"Failed to download image: {e}"
-        error_callback("API Error", message)
-        return None
-
-def download_image(url, file_name, prompt, error_callback=fallback_show_error):
-    key = f"{prompt}"
-    prompt_dir = hashlib.sha256(key.encode('utf-8')).hexdigest()
-    save_path = os.path.join(DOWNLOAD_DIR,prompt_dir,file_name)
-    tmp_save_path = save_path + "-tmp"
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status() 
-        dir_name = os.path.dirname(save_path)
-        os.makedirs(dir_name, exist_ok=True)
-        prompt_file = os.path.join( dir_name, "prompt.txt")
-        try:
-            with open(prompt_file, 'w') as file:
-                file.write(prompt)
-        except IOError as e:
-            print(f"Error writing prompt {prompt} to file: {e}")
-        with open(tmp_save_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192): f.write(chunk)
-        os.replace(tmp_save_path, save_path)
-    except Exception as e:
-        try:
-            os.remove(tmp_save_path)
-            os.remove(save_path)
-        except Exception: pass
-        message = f"Failed to download image: {e}"
-        error_callback("Download Error", message)
-        return None
-    try:
-        link_path=os.path.join(IMAGE_DIR, file_name)
-        os.symlink(save_path, link_path)
-        return link_path
-    except Exception as e:
-        os.remove(link_path)
-        message = f"Failed to link image: {e}"
-        error_callback("File system error,", message)
-        return None
-    
-
 # --- Wallpaper Setting Functions (Platform-Specific) ---
 
 def set_wallpaper(image_path, error_callback=fallback_show_error):
@@ -547,16 +434,8 @@ def set_wallpaper(image_path, error_callback=fallback_show_error):
     except Exception as e:
         error_callback("Wallpaper Error", f"Failed to set wallpaper: {e}")
         return False
+
     
-
-def unique_name(original_path, category):
-    _, ext = os.path.splitext(original_path)
-    timestamp_str = datetime.now().strftime('%Y-%m-%d-%H-%M-%S-%f')
-    random_raw_part = secrets.token_urlsafe(18)
-    sanitized_random_part = random_raw_part.replace('/', '_').replace('+', '-')
-    base_name = f"{timestamp_str}_{category}_{sanitized_random_part}"
-    return f"{base_name}{ext}"
-
 def get_parent_directory(path):
     return os.path.dirname(path)
 
@@ -1058,7 +937,7 @@ class DirectoryThumbnailGrid(tk.Frame):
         height = self.winfo_reqheight()
         return width, height
         
-    def set_size_and_path(self, width, path=IMAGE_DIR):
+    def set_size_and_path(self, width, path):
         self._directory_path = path
         self._item_width = width
         return self.regrid()
@@ -1913,15 +1792,13 @@ class ImageManager(tk.Tk):
                 del path_list[0]
                 for path in path_list:
                     self.open_path(path)
-                return
-            if cmd.startswith("SetWP"):
+            elif cmd.startswith("SetWP"):
                 print(f"execute as an internal command: {cmd}")
                 path_list = shlex.split( cmd )
                 del path_list[0]
                 if path_list:
                     self.set_wp(path_list[-1])
-                return
-            if True:
+            else:
                 print(f"execute as a shell command: {cmd}")
                 self.execute_shell_command(cmd)
                 self.broadcast_contents_change()
