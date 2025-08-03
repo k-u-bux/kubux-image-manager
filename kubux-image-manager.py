@@ -1913,7 +1913,15 @@ class ImageManager(tk.Tk):
                 del path_list[0]
                 for path in path_list:
                     self.open_path(path)
-            else:
+                return
+            if cmd.startswith("SetWP"):
+                print(f"execute as an internal command: {cmd}")
+                path_list = shlex.split( cmd )
+                del path_list[0]
+                if path_list:
+                    self.set_wp(path_list[-1])
+                return
+            if True:
                 print(f"execute as a shell command: {cmd}")
                 self.execute_shell_command(cmd)
                 self.broadcast_contents_change()
@@ -1981,7 +1989,14 @@ class ImageManager(tk.Tk):
         if self.open_picker_dialogs:
             self.new_picker_info = self.open_picker_dialogs[-1].get_picker_info()
         self.open_picker_dialog([ self.new_picker_info[0], directory_path, self.new_picker_info[2] ])
-        
+
+    def set_wp(self, path):
+        try:
+            if os.path.isfile(path):
+                set_wallpaper(path)
+        except Exception as e:
+            print(f"path {path} has problems, message: {e}")
+                
     def execute_shell_command(self, command):
         subprocess.run(command, shell=True)
         
