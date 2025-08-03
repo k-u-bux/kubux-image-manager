@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Kubux Image Manager
+Comment=file manager for images with command line workflow
+Exec=kubux-image-manager
+Icon=kubux-image-manager
+Terminal=false
+Type=Application
+Categories=Graphics;Photography;
+Keywords=images;file manager
+StartupNotify=true
+StartupWMClass=kubux-image-manager
