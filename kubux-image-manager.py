@@ -563,7 +563,7 @@ class ImageViewer(tk.Toplevel):
             while x < 120 and y < 120 :
                 x = 2*x
                 y = 2*y
-            while 800 < x or 800 < y:
+            while 1300 < x or 900 < y:
                 x = x / 1.1
                 y = y / 1.1
             self._geometry=f"{int(x)}x{int(y)}"
