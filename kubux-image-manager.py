@@ -1777,6 +1777,8 @@ class ImageManager(tk.Tk):
                 self.deselect_button.pack(side="left", padx=5)
                 self.quit_button = tk.Button( self.controll_frame, text="Quit", font = self.main_font, command = self.close)
                 self.quit_button.pack(side="right", padx=5)
+
+        self.update_button_status()
                 
     def execute_command_with_args(self, command, args):
         print(f"execute: {command} with args = {args}")
@@ -1834,13 +1836,21 @@ class ImageManager(tk.Tk):
         print(f"clearing selection")
         self.selected_files = []
         self.broadcast_selection_change()
-
+        self.update_button_status()
+        
     def toggle_selection(self, file):
         if file in self.selected_files:
             self.unselect_file(file)
         else:
             self.select_file(file)
+        self.update_button_status()
 
+    def update_button_status(self):
+        if not self.selected_files:
+            self.deselect_button.config(state="disabled")
+        else:
+            self.deselect_button.config(state="normal")
+        
     def close(self):
         self._save_app_settings()
         self.destroy()
