@@ -1410,7 +1410,11 @@ class ImagePicker(tk.Toplevel):
         )
         self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
 
-        # Middle: thumbnail slider
+
+        # Right side: Clone and Close buttons, thumnail slider
+        ttk.Button(self._control_frame, text="Close", command=self._on_close).pack(side="right", padx=(24, 2))
+        ttk.Button(self._control_frame, text="Clone", command=self._on_clone).pack(side="right", padx=(24, 2))
+
         dummy_C_frame = tk.Frame(self._control_frame)
         dummy_C_frame.pack(side="right", expand=False, fill="x")
         self.thumbnail_slider = tk.Scale(
@@ -1420,13 +1424,9 @@ class ImagePicker(tk.Toplevel):
         self.thumbnail_slider.set(self._thumbnail_width)
         self.thumbnail_slider.config(command=self._update_thumbnail_width)
         self.thumbnail_slider.pack(anchor="e")
-        # dummy_C_label = tk.Label(controls_frame, text=":", font=self.main_font)
-        # dummy_C_label.pack(side="right", padx=(12,0))
+        dummy_C_label = tk.Label(self._control_frame, text="Size:", font=self.master.main_font)
+        dummy_C_label.pack(side="right", padx=(12,0))
         
-        # Right side: Clone and Close buttons
-        ttk.Button(self._control_frame, text="Close", command=self._on_close).pack(side="right", padx=(24, 2))
-        ttk.Button(self._control_frame, text="Clone", command=self._on_clone).pack(side="right", padx=(24, 2))
-
         self._browse_directory(self._image_dir)
         self._gallery_canvas.yview_moveto(0.0)
         self.after(100, self.focus_set)
@@ -1683,6 +1683,7 @@ class ImageManager(tk.Tk):
         self.configure(background=self.cget("background"))
         font_name, font_size = get_linux_system_ui_font_info()
         self.ui_scale = 1.0
+        self._ui_scale_job = None
         self.base_font_size = font_size
         self.main_font = tkFont.Font(family=font_name, size=int(self.base_font_size * self.ui_scale))
         self.geometry(self.main_win_geometry)
@@ -1771,12 +1772,25 @@ class ImageManager(tk.Tk):
             self.controll_frame = tk.Frame( self.main_container )
             self.controll_frame.pack( side="bottom", fill="x", expand=False, padx=5, pady=5 )
             if True:
-                self.exec_button = tk.Button( self.controll_frame, text="Process selected files", font = self.main_font, command = self.execute_current_command )
+                self.exec_button = tk.Button( self.controll_frame, text="Process selected", font = self.main_font, command = self.execute_current_command )
                 self.exec_button.pack(side="left", padx=5)
                 self.deselect_button = tk.Button( self.controll_frame, text="Clear selection", font = self.main_font, command = self.clear_selection)
                 self.deselect_button.pack(side="left", padx=5)
+
                 self.quit_button = tk.Button( self.controll_frame, text="Quit", font = self.main_font, command = self.close)
                 self.quit_button.pack(side="right", padx=5)
+
+                dummy_C_frame = tk.Frame(self.controll_frame)
+                dummy_C_frame.pack(side="right", expand=False, fill="x")
+                self.ui_slider = tk.Scale(
+                    dummy_C_frame, from_=0.5, to=3.5, orient="horizontal", 
+                    resolution=0.1, showvalue=False
+                )
+                self.ui_slider.set(self.ui_scale)
+                self.ui_slider.config(command=self._update_ui_scale)
+                self.ui_slider.pack(anchor="e")
+                dummy_C_label = tk.Label(self.controll_frame, text="UI:", font=self.main_font)
+                dummy_C_label.pack(side="right", padx=(12,0))
 
         self.update_button_status()
                 
@@ -1832,6 +1846,21 @@ class ImageManager(tk.Tk):
         self.selected_files.remove(path)
         self.broadcast_selection_change()
         
+    def _do_update_ui_scale(self, scale_factor):
+        self.ui_scale = scale_factor
+        new_size = int(self.base_font_size * scale_factor)
+        self.main_font.config(size=new_size)
+        def update_widget_fonts(widget, font):
+            try:
+                if 'font' in widget.config(): widget.config(font=font)
+            except tk.TclError: pass
+            for child in widget.winfo_children(): update_widget_fonts(child, font)
+        update_widget_fonts(self, self.main_font)
+
+    def _update_ui_scale(self, value):
+        if self._ui_scale_job: self.after_cancel(self._ui_scale_job)
+        self._ui_scale_job = self.after(400, lambda: self._do_update_ui_scale(float(value)))
+
     def clear_selection(self):
         print(f"clearing selection")
         self.selected_files = []
