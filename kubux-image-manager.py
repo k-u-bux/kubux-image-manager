@@ -1244,12 +1244,14 @@ class BreadCrumNavigator(ttk.Frame):
         btn.bind("<Motion>", self._on_button_motion)
         btn_list.insert( 0, btn )
 
+        first_i = max( 0, len( btn_list ) - 3 )
         for i, btn in enumerate( btn_list ):
-            if i > 0:
-                ttk.Label(self, text=" / ").pack(side="left")
-            if i + 1 == len( btn_list ):
-                 btn.bind("<ButtonPress-1>", self._on_button_press_menu)
-            btn.pack(side="left")            
+            if i >= first_i:
+                if i > first_i:
+                    ttk.Label(self, text=" / ").pack(side="left")
+                if i + 1 == len( btn_list ):
+                    btn.bind("<ButtonPress-1>", self._on_button_press_menu)
+                btn.pack(side="left")
             
     def _trigger_navigate(self, path):
         if self._on_navigate_callback:
@@ -1653,7 +1655,7 @@ def expand_wildcards(command_line: str, selected_files: list[str]) -> list[str]:
                     current_command_tokens.append(file_path)
                 else:
                     current_command_tokens.append(token)
-            cmd = shlex.join(current_command_tokens).replace("'>'",">").replace("'>>'",">>").replace("'&'","&")
+            cmd = shlex.join(current_command_tokens).replace("'>'",">").replace("'>>'",">>").replace("'&'","&").replace("';'",";")
             output_commands.append(cmd)
         return output_commands
 
@@ -1668,7 +1670,7 @@ def expand_wildcards(command_line: str, selected_files: list[str]) -> list[str]:
                 expanded_command_tokens.extend(unquoted_selected_files_for_star)
             else:
                 expanded_command_tokens.append(token)
-        return [shlex.join(expanded_command_tokens).replace("'>'",">").replace("'>>'",">>").replace("'&'","&")]
+        return [shlex.join(expanded_command_tokens).replace("'>'",">").replace("'>>'",">>").replace("'&'","&").replace("';'",";")]
 
     # This 'else' should theoretically not be reached due to earlier checks,
     # but serves as a fallback.
