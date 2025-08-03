@@ -1653,7 +1653,8 @@ def expand_wildcards(command_line: str, selected_files: list[str]) -> list[str]:
                     current_command_tokens.append(file_path)
                 else:
                     current_command_tokens.append(token)
-            output_commands.append(shlex.join(current_command_tokens))
+            cmd = shlex.join(current_command_tokens).replace("'>'",">").replace("'>>'",">>").replace("'&'","&")
+            output_commands.append(cmd)
         return output_commands
 
     # Case 2: Only '*' is present (has_list_wildcard is False, but has_single_wildcard is True).
@@ -1667,7 +1668,7 @@ def expand_wildcards(command_line: str, selected_files: list[str]) -> list[str]:
                 expanded_command_tokens.extend(unquoted_selected_files_for_star)
             else:
                 expanded_command_tokens.append(token)
-        return [shlex.join(expanded_command_tokens)]
+        return [shlex.join(expanded_command_tokens).replace("'>'",">").replace("'>>'",">>").replace("'&'","&")]
 
     # This 'else' should theoretically not be reached due to earlier checks,
     # but serves as a fallback.
@@ -1734,7 +1735,7 @@ class ImageManager(tk.Tk):
 
         self.ui_scale = self.app_settings.get("ui_scale", 1.0)
         self.main_win_geometry = self.app_settings.get("main_win_geometry", "300x400")
-        self.commands = self.app_settings.get("commands", "open {*}\nSetWP *\nopen ${HOME}/Pictures")
+        self.commands = self.app_settings.get("commands", "open {*}\nSetWP *\nopen ${HOME}/Pictures\necho {*} >> /tmp/files")
         self.selected_files = self.app_settings.get("selected_files", [])
         self.new_picker_info = self.app_settings.get("new_picker_info", [ 192, PICTURES_DIR, "1000x600" ])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
