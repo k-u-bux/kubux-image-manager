@@ -916,7 +916,7 @@ class ImageViewer(tk.Toplevel):
 class DirectoryThumbnailGrid(tk.Frame):
     def __init__(self, master=None, directory_path="", item_width=None, item_border_width=None,
                  button_config_callback=None, **kwargs):
-        super().__init__(master, **kwargs)
+        super().__init__(master, class_="kubux-image-manager", **kwargs)
 
         self._item_border_width = item_border_width
         self._directory_path = directory_path
@@ -1331,7 +1331,7 @@ class BreadCrumNavigator(ttk.Frame):
         self._trigger_navigate(selected_path)
 
         
-class ImagePickerDialog(tk.Toplevel):
+class ImagePicker(tk.Toplevel):
     def _cache_widget(self):
         try:
             path_name = path_name_queue.get_nowait()
@@ -1342,7 +1342,7 @@ class ImagePickerDialog(tk.Toplevel):
         self.after(50, self._cache_widget)
         
     def __init__(self, master, picker_info = None):
-        super().__init__(master)
+        super().__init__(master, class_="kubux-image-manager")
 
         self._master = master
         self._thumbnail_width = picker_info[0]
@@ -1703,7 +1703,7 @@ class ImageManager(tk.Tk):
             self.open_picker_dialog( picker_info )
 
     def open_picker_dialog(self, picker_info):
-        dummy = ImagePickerDialog(self, picker_info)
+        dummy = ImagePicker(self, picker_info)
         self.open_picker_dialogs.append( dummy )        
         
     def collect_open_image_info(self):
