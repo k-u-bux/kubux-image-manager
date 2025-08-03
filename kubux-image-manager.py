@@ -49,7 +49,6 @@ PICTURES_DIR = os.path.join(HOME_DIR, "Pictures")
 DEFAULT_THUMBNAIL_DIM = 192
 APP_SETTINGS_FILE = os.path.join(CONFIG_DIR, "app_settings.json")    
 
-os.makedirs(IMAGE_DIR, exist_ok=True)
 os.makedirs(THUMBNAIL_CACHE_ROOT, exist_ok=True)
 
 
