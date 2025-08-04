@@ -567,7 +567,7 @@ class ImageViewer(tk.Toplevel):
                 x = x / 1.1
                 y = y / 1.1
             self._geometry=f"{int(x)}x{int(y)}"
-            print(f"initial geometry = {self._geometry}")
+            print(f"actual size = {w} x {h}, initial display geometry = {self._geometry}")
         self.geometry(self._geometry)            
         self.resizable(True, True)
         self.wm_attributes("-type", "normal")
