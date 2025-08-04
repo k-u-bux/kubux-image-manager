@@ -1717,7 +1717,7 @@ class ImageManager(tk.Tk):
 
             self.app_settings["ui_scale"] = self.ui_scale
             self.app_settings["main_win_geometry"] = self.geometry()
-            self.app_settings["commands"] = self.command_field.current_text()
+            self.app_settings["commands"] = self.command_field.current_text().rstrip('\n')
             self.app_settings["current_index"] = self.command_field._current_index()
             self.app_settings["selected_files"] = self.selected_files
             self.app_settings["new_picker_info"] = self.new_picker_info
