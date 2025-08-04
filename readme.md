@@ -17,29 +17,18 @@ Kubux Image Manager is a powerful yet simple Tkinter-based image management appl
 
 ## Installation
 
-### Prerequisites
+### From Source (Nix)
 
-- Python 3.6+
-- Tkinter
-- Pillow (PIL fork)
-- Requests
-- python-dotenv
-
-### Dependencies Installation
+Kubux Image Manager includes a `flake.nix` for easy installation on NixOS and other systems with Nix package manager:
 
 ```bash
-pip install pillow requests python-dotenv
+nix profile install github:k-u-bux/kubux-image-manager
 ```
 
-If you wish to use the optional AI image generation features, also install:
-```bash
-pip install together
-```
-
-### Run the Application
+Alternatively, you can test drive the app:
 
 ```bash
-python kubux-image-manager.py
+nix run github:k-u-bux/kubux-image-manager
 ```
 
 ## Usage
