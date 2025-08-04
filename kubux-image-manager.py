@@ -1025,6 +1025,9 @@ class ImageViewer(tk.Toplevel):
         print(f"renaming from {old_name} to {new_name}")
         try:
             new_path = os.path.join(self.dir_name, new_name)
+            if os.path.exists(new_path):
+                print(f"there already is a file {new_path}. Not overwriting.")
+                return
             os.rename( self.image_path, new_path )
             self.image_path = new_path
             self.title( new_name )
