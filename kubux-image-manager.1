@@ -1,0 +1,111 @@
+.TH KUBUX-IMAGE-MANAGER 1 "June 2023" "Version 1.0" "User Commands"
+.SH NAME
+kubux-image-manager \- a flexible image browsing and batch processing tool
+.SH SYNOPSIS
+.B kubux-image-manager
+.SH DESCRIPTION
+.B kubux-image-manager
+is a graphical application for browsing, organizing, and batch processing image files on Linux systems.
+It provides a thumbnail gallery interface with support for multiple concurrent browser windows,
+a built-in image viewer, and a powerful command system for operating on selected files.
+.SH FEATURES
+.SS Image Browsing
+Navigate your file system with an intuitive breadcrumb interface. Long-press or click directory
+names to quickly jump to other locations. The file browser displays thumbnails that can be
+resized using the slider control.
+.SS Image Viewing
+Double-click or right-click on thumbnails to view images in a dedicated viewer window with zoom
+and pan capabilities. The viewer supports keyboard and mouse controls for navigation.
+.SS File Selection
+Left-click on thumbnails to select them for batch operations. Selected files are highlighted with
+a blue border and can be processed with commands from the main window.
+.SS Command System
+A text field at the top of the main window accepts commands to execute on selected files.
+Commands can be built-in (open, SetWP) or any shell command. Double-click a command to execute it
+or use the "Process selected" button.
+.SH COMMANDS
+.TP
+.B open PATH
+Opens the specified file or directory. If a directory, opens in a new browser window. If an image file, opens in the image viewer.
+.TP
+.B SetWP PATH
+Sets the specified image as desktop wallpaper (compatible with most Linux desktop environments).
+.TP
+.B any shell command
+Executes the shell command with the ability to use wildcards for selected files.
+.SH WILDCARDS
+.TP
+.B *
+Expands to all selected files as separate arguments in a single command.
+.TP
+.B {*}
+Creates a separate command for each selected file, replacing {*} with the individual file path.
+.SH EXAMPLES
+.TP
+.B open ${HOME}/Pictures
+Open the Pictures directory in a browser window.
+.TP
+.B SetWP *
+Set the first selected image as wallpaper.
+.TP
+.B cp * ~/Pictures/Backup/
+Copy all selected files to the Backup directory.
+.TP
+.B convert {*} -resize 800x600 ~/Pictures/Resized/$(basename {*})
+Resize each selected image to 800x600 and save to the Resized directory.
+.TP
+.B echo {*} >> /tmp/files
+Append each file path to /tmp/files on a new line.
+.SH KEYBOARD SHORTCUTS
+.SS Main Window
+.TP
+.B Enter
+Execute the current command
+.TP
+.B Escape
+Close a dialog or window
+.SS Image Browser
+.TP
+.B Up, Down
+Scroll the thumbnail grid
+.TP
+.B Page Up, Page Down
+Scroll the thumbnail grid by pages
+.TP
+.B Escape
+Close the browser window
+.SS Image Viewer
+.TP
+.B +/=
+Zoom in
+.TP
+.B -/_
+Zoom out
+.TP
+.B 0
+Reset zoom to fit window
+.TP
+.B F11
+Toggle fullscreen
+.TP
+.B Escape
+Close viewer
+.SH FILES
+.TP
+.B ~/.config/kubux-image-manager/app_settings.json
+Configuration file storing user preferences and session state.
+.TP
+.B ~/.cache/kubux-thumbnail-cache/
+Directory storing cached thumbnails for faster browsing.
+.SH ENVIRONMENT
+.TP
+.B HOME
+Used for environment variable expansion in paths with ${HOME} syntax.
+.TP
+Any environment variables can be accessed using the ${VARIABLE_NAME} syntax in commands.
+.SH AUTHOR
+Kai-Uwe Bux
+.SH BUGS
+Please report bugs to the project repository.
+.SH COPYRIGHT
+Copyright © 2025 Kai-Uwe Bux. Licensed under Apache License 2.0.
