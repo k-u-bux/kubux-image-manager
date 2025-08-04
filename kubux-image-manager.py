@@ -40,7 +40,11 @@ SUPPORTED_IMAGE_EXTENSIONS = (
     '.ico', '.icns', '.avif', '.dds', '.msp', '.pcx', '.ppm',
     '.pbm', '.pgm', '.sgi', '.tga', '.xbm', '.xpm'
 )
-    
+
+BUTTON_RELIEF="flat"
+SCALE_RELIEF="flat"
+SCROLLBAR_RELIEF="flat"
+
 HOME_DIR = os.path.expanduser('~')
 CONFIG_DIR = os.path.join(HOME_DIR, ".config", "kubux-image-manager")
 CACHE_DIR = os.path.join(HOME_DIR, ".cache", "kubux-thumbnail-cache")
@@ -289,7 +293,7 @@ def custom_message_dialog(parent, title, message, font=("Arial", 12)):
     # Text widget with scrollbar for the message
     text_widget = tk.Text(msg_frame, wrap=tk.WORD, font=font, 
                           highlightthickness=0, borderwidth=0)
-    scrollbar = ttk.Scrollbar(msg_frame, orient="vertical", 
+    scrollbar = tk.Scrollbar(msg_frame, orient="vertical", relief=SCROLLBAR_RELIEF,
                               command=text_widget.yview)
     text_widget.configure(yscrollcommand=scrollbar.set)
     
@@ -579,8 +583,8 @@ class ImageViewer(tk.Toplevel):
         self.frame.pack(fill=tk.BOTH, expand=True)
         
         # Create horizontal and vertical scrollbars
-        self.h_scrollbar = ttk.Scrollbar(self.frame, orient=tk.HORIZONTAL)
-        self.v_scrollbar = ttk.Scrollbar(self.frame, orient=tk.VERTICAL)
+        self.h_scrollbar = tk.Scrollbar(self.frame, orient=tk.HORIZONTAL, relief=SCROLLBAR_RELIEF)
+        self.v_scrollbar = tk.Scrollbar(self.frame, orient=tk.VERTICAL, relief=SCROLLBAR_RELIEF)
         
         # Create canvas for the image
         self.canvas = tk.Canvas(
@@ -946,7 +950,7 @@ class DirectoryThumbnailGrid(tk.Frame):
         target_btn, tk_image = self._widget_cache.get(cache_key, (None, None))
         
         if target_btn is None:
-            target_btn = tk.Button(self)
+            target_btn = tk.Button(self, relief=BUTTON_RELIEF)
             tk_image_ref = self._configure_button(target_btn, img_path)
             assert not tk_image_ref is None
             self._widget_cache[cache_key] = (target_btn, tk_image_ref)
@@ -1112,7 +1116,7 @@ class LongMenu(tk.Toplevel):
         )
         self._listbox.pack(side="left", fill="both", expand=True)
 
-        self._scrollbar = ttk.Scrollbar(self._listbox_frame, orient="vertical", command=self._listbox.yview)
+        self._scrollbar = tk.Scrollbar(self._listbox_frame, relief=SCROLLBAR_RELIEF, orient="vertical", command=self._listbox.yview)
         self._scrollbar.pack(side="right", fill="y")
         self._listbox.config(yscrollcommand=self._scrollbar.set)
 
@@ -1229,7 +1233,7 @@ class BreadCrumNavigator(ttk.Frame):
             btn_text = os.path.basename(path)
             if btn_text == '': 
                 btn_text = os.path.sep
-            btn = tk.Button(self, text=btn_text, font=self.btn_font)
+            btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=self.btn_font)
             btn.path = path
             btn.bind("<ButtonPress-1>", self._on_button_press)
             btn.bind("<ButtonRelease-1>", self._on_button_release)
@@ -1237,22 +1241,30 @@ class BreadCrumNavigator(ttk.Frame):
             btn_list.insert( 0, btn )
 
         btn_text="//"
-        btn = tk.Button(self, text=btn_text, font=self.btn_font)
+        btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=self.btn_font)
         btn.path = current_display_path
         btn.bind("<ButtonPress-1>", self._on_button_press)
         btn.bind("<ButtonRelease-1>", self._on_button_release)
         btn.bind("<Motion>", self._on_button_motion)
         btn_list.insert( 0, btn )
 
-        first_i = max( 0, len( btn_list ) - 3 )
-        for i, btn in enumerate( btn_list ):
-            if i >= first_i:
-                if i > first_i:
-                    ttk.Label(self, text=" / ").pack(side="left")
-                if i + 1 == len( btn_list ):
-                    btn.bind("<ButtonPress-1>", self._on_button_press_menu)
-                btn.pack(side="left")
-            
+        dummy_frame = tk.Frame(self)
+        dummy_frame.pack(side="right", fill="x", expand=True)
+        for i, btn in enumerate( reversed(btn_list) ):
+            btn.pack(side="right")
+            if i + 1< len(btn_list):
+                ttk.Label(self, text="/").pack(side="right")
+        
+#        first_i = max( 0, len( btn_list ) - 3 )
+#        for i, btn in enumerate( btn_list ):
+#            if i >= first_i:
+#                if i > first_i:
+#                    ttk.Label(self, text=" / ").pack(side="left")
+#                if i + 1 == len( btn_list ):
+#                    btn.bind("<ButtonPress-1>", self._on_button_press_menu)
+#                btn.pack(side="left")
+
+
     def _trigger_navigate(self, path):
         if self._on_navigate_callback:
             self._on_navigate_callback(path)
@@ -1373,7 +1385,7 @@ class ImagePicker(tk.Toplevel):
         self._canvas_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
         self._gallery_canvas = tk.Canvas(self._canvas_frame, bg=self.cget("background"))
-        self._gallery_scrollbar = ttk.Scrollbar(self._canvas_frame, orient="vertical", command=self._gallery_canvas.yview)
+        self._gallery_scrollbar = tk.Scrollbar(self._canvas_frame, relief=SCROLLBAR_RELIEF, orient="vertical", command=self._gallery_canvas.yview)
         self._gallery_canvas.config(yscrollcommand=self._gallery_scrollbar.set)
         
         self._gallery_scrollbar.pack(side="right", fill="y")
@@ -1414,13 +1426,13 @@ class ImagePicker(tk.Toplevel):
 
 
         # Right side: Clone and Close buttons, thumnail slider
-        ttk.Button(self._control_frame, text="Close", command=self._on_close).pack(side="right", padx=(24, 2))
-        ttk.Button(self._control_frame, text="Clone", command=self._on_clone).pack(side="right", padx=(24, 2))
+        tk.Button(self._control_frame, font=self._master.main_font, text="Close", relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
+        tk.Button(self._control_frame, font=self._master.main_font, text="Clone", relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
 
         dummy_C_frame = tk.Frame(self._control_frame)
         dummy_C_frame.pack(side="right", expand=False, fill="x")
         self.thumbnail_slider = tk.Scale(
-            dummy_C_frame, from_=96, to=480, orient="horizontal", 
+            dummy_C_frame, from_=96, to=480, orient="horizontal", relief=SCALE_RELIEF,
             resolution=20, showvalue=False
         )
         self.thumbnail_slider.set(self._thumbnail_width)
@@ -1433,7 +1445,7 @@ class ImagePicker(tk.Toplevel):
         self._gallery_canvas.yview_moveto(0.0)
         self.after(100, self.focus_set)
 
-    def _adjust_gallery_scroll_position(self, old_scroll_fraction):
+    def _adjust_gallery_scroll_position(self, old_scroll_fraction=0.0):
         bbox = self._gallery_canvas.bbox("all")
 
         if not bbox:
@@ -1494,6 +1506,7 @@ class ImagePicker(tk.Toplevel):
         self.breadcrumb_nav.set_path(path)
         self.update_idletasks()
         self._repaint()
+        self._adjust_gallery_scroll_position()
 
     def _toggle_selection(self, img_path, button_widget):
         self.master.toggle_selection(img_path)
@@ -1536,7 +1549,7 @@ class FlexibleTextField(tk.Frame):
 
     def _create_widgets(self):
         self.text_area = tk.Text(self, wrap=tk.NONE, font=self._font, height=1, width=1)
-        self.text_scroll = ttk.Scrollbar(self, orient=tk.VERTICAL, command=self.text_area.yview)
+        self.text_scroll = tk.Scrollbar(self, relief=SCROLLBAR_RELIEF, orient=tk.VERTICAL, command=self.text_area.yview)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.text_area.config(yscrollcommand=self.text_scroll.set)
@@ -1743,18 +1756,18 @@ class ImageManager(tk.Tk):
             self.controll_frame = tk.Frame( self.main_container )
             self.controll_frame.pack( side="bottom", fill="x", expand=False, padx=5, pady=5 )
             if True:
-                self.exec_button = tk.Button( self.controll_frame, text="Process selected", font = self.main_font, command = self.execute_current_command )
+                self.exec_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Process selected", font = self.main_font, command = self.execute_current_command )
                 self.exec_button.pack(side="left", padx=5)
-                self.deselect_button = tk.Button( self.controll_frame, text="Clear selection", font = self.main_font, command = self.clear_selection)
+                self.deselect_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Clear selection", font = self.main_font, command = self.clear_selection)
                 self.deselect_button.pack(side="left", padx=5)
 
-                self.quit_button = tk.Button( self.controll_frame, text="Quit", font = self.main_font, command = self.close)
+                self.quit_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Quit", font = self.main_font, command = self.close)
                 self.quit_button.pack(side="right", padx=5)
 
                 dummy_C_frame = tk.Frame(self.controll_frame)
                 dummy_C_frame.pack(side="right", expand=False, fill="x")
                 self.ui_slider = tk.Scale(
-                    dummy_C_frame, from_=0.5, to=3.5, orient="horizontal", 
+                    dummy_C_frame, from_=0.5, to=3.5, orient="horizontal", relief=SCALE_RELIEF,
                     resolution=0.1, showvalue=False
                 )
                 self.ui_slider.set(self.ui_scale)
