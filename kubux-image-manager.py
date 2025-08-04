@@ -1642,7 +1642,6 @@ def expand_wildcards(command_line: str, selected_files: list[str]) -> list[str]:
 
     return [ command_line.replace("*", quoted_args) ]
 
-
         
 class ImageManager(tk.Tk):
     def __init__(self):
