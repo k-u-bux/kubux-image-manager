@@ -1630,55 +1630,18 @@ def expand_wildcards(command_line: str, selected_files: list[str]) -> list[str]:
     if (has_single_wildcard or has_list_wildcard) and not selected_files:
         return []
     
-    # --- No Wildcards Present At All ---
-    if not has_single_wildcard and not has_list_wildcard:
-        return [command_line]
+    keep_fingers_crossed = "dasdklasdashdaisdhiunerwehuacnkajdasudhuiewrnksvjiurkanr"
+    quoted_args = shlex.join(selected_files)
+    outputs = []
+    for file in selected_files:
+        quoted_file = shlex.quote(file)
+        cmd = command_line.replace("{*}", keep_fingers_crossed).replace("*", quoted_args).replace(keep_fingers_crossed, quoted_file)
+        outputs.append( cmd )
+    if outputs:
+        return outputs
 
-    # The list of selected files (unquoted), to be used when '*' is expanded.
-    # shlex.join will handle the quoting of these individual arguments.
-    # We use list(selected_files) to create a copy, ensuring we don't modify original.
-    unquoted_selected_files_for_star = list(selected_files)
+    return [ command_line.replace("*", quoted_args) ]
 
-    # --- Main Expansion Logic ---
-
-    # Case 1: '{*}' is present. This means we generate N commands, one per selected file.
-    # The '*' wildcard will also expand to multiple separate arguments within each of these N commands.
-    if has_list_wildcard:
-        output_commands = []
-        for file_path in selected_files: # file_path is already unquoted
-            current_command_tokens = []
-            for token in raw_tokens:
-                if token == '*':
-                    # Extend with the unquoted selected files directly.
-                    # shlex.join will handle quoting them correctly later.
-                    current_command_tokens.extend(unquoted_selected_files_for_star)
-                elif token == '{*}':
-                    # Append the current unquoted file_path directly.
-                    # shlex.join will handle quoting it correctly later.
-                    current_command_tokens.append(file_path)
-                else:
-                    current_command_tokens.append(token)
-            cmd = shlex.join(current_command_tokens).replace("'>'",">").replace("'>>'",">>").replace("'&'","&").replace("';'",";")
-            output_commands.append(cmd)
-        return output_commands
-
-    # Case 2: Only '*' is present (has_list_wildcard is False, but has_single_wildcard is True).
-    # This means we generate exactly ONE command.
-    elif has_single_wildcard:
-        expanded_command_tokens = []
-        for token in raw_tokens:
-            if token == '*':
-                # Extend with the unquoted selected files directly.
-                # shlex.join will handle quoting them correctly later.
-                expanded_command_tokens.extend(unquoted_selected_files_for_star)
-            else:
-                expanded_command_tokens.append(token)
-        return [shlex.join(expanded_command_tokens).replace("'>'",">").replace("'>>'",">>").replace("'&'","&").replace("';'",";")]
-
-    # This 'else' should theoretically not be reached due to earlier checks,
-    # but serves as a fallback.
-    assert False
-    return [command_line]
 
         
 class ImageManager(tk.Tk):
