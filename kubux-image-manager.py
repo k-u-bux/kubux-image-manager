@@ -1804,7 +1804,7 @@ class ImageManager(tk.Tk):
 
     def broadcast_contents_change(self):
         for picker in self.open_picker_dialogs:
-            print(f"alerting image picker for directory {picker.get_picker_info()[1]}")
+            # print(f"alerting image picker for directory {picker.get_picker_info()[1]}")
             picker._repaint()
         
     def select_file(self, path):
@@ -1884,7 +1884,10 @@ class ImageManager(tk.Tk):
             print(f"path {path} has problems, message: {e}")
                 
     def execute_shell_command(self, command):
-        subprocess.run(command, shell=True)
+        result = subprocess.run(command, shell=True)
+        print(f"return code = {result.returncode}")
+        print(f"stdout = {result.stdout}")
+        print(f"stderr = {result.stderr}")
         
         
 if __name__ == "__main__":
