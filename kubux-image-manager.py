@@ -519,13 +519,14 @@ class BackgroundWorker:
             while self.keep_running and ( old_size == self.current_size ) and ( old_directory == self.current_dir ):
                 time.sleep(2)
 
-    def __init__(self):
+    def __init__(self, path, width):
         self.keep_running = True
-        self.current_size = 0
-        self.current_dir = ""
+        self.current_size = width
+        self.current_dir = path
         self.worker = threading.Thread( target=self.background )
         self.block = threading.Event()
-
+        self.worker.start()
+        
     def pause(self):
         self.block.clear()
 
@@ -536,16 +537,15 @@ class BackgroundWorker:
         self.block.wait()
 
     def run(self, dir_path, size):
+        self.pause()
         self.current_size = size
         self.current_dir = dir_path
-        self.worker.start()
-
+        self.resume()
+        
     def stop(self):
         self.keep_running = False
         self.resume()
         
-background_worker = BackgroundWorker()
-
 
 def list_image_files(directory_path):
     if not os.path.isdir(directory_path):
@@ -1464,28 +1464,19 @@ class BreadCrumNavigator(ttk.Frame):
 
         
 class ImagePicker(tk.Toplevel):
-    def _cache_widget(self):
-        try:
-            path_name = path_name_queue.get_nowait()
-            self._gallery_grid._get_button(path_name, self._thumbnail_width)
-            # print(f"created button for {path_name} at size {self._thumbnail_width}")
-        except queue.Empty:
-            pass
-        self.after(50, self._cache_widget)
-        
     def __init__(self, master, picker_info = None):
         super().__init__(master, class_="kubux-image-manager")
 
         self._master = master
         self._thumbnail_width = picker_info[0]
         self._image_dir = picker_info[1]
+        self.background_worker = BackgroundWorker( self._image_dir, self._thumbnail_width )
         self._geometry = picker_info[2]
         self._update_thumbnail_job = None
         self.watcher = DirectoryWatcher(self)
         self.geometry(self._geometry)
         self._create_widgets()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.after(0, self._cache_widget)
 
     def get_picker_info(self):
         self._geometry = self.geometry()
@@ -1609,6 +1600,7 @@ class ImagePicker(tk.Toplevel):
              btn.config(highlightbackground=self.cget("background"))
 
     def _on_close(self):
+        self.background_worker.stop()
         self.watcher.stop_watching()
         self.master.open_picker_dialogs.remove(self)
         self.destroy()
@@ -1620,10 +1612,7 @@ class ImagePicker(tk.Toplevel):
         
         self._image_dir = path
         self.watcher.change_dir( path )
-        try: # Added try-except for background_worker in case it's not global or initialized yet
-            background_worker.current_dir = path
-        except NameError:
-            print("Warning: background_worker not found. Cannot update its current_dir.")
+        self.background_worker.run( path, self._thumbnail_width )
             
         self.breadcrumb_nav.set_path(path)
         self.update_idletasks()
@@ -1988,6 +1977,8 @@ class ImageManager(tk.Tk):
         
     def close(self):
         self._save_app_settings()
+        for picker in self.open_picker_dialogs:
+            picker._on_close()
         self.destroy()
 
     def open_path(self, path):
