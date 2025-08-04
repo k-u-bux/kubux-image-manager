@@ -62,14 +62,14 @@ The application uses a command system to operate on selected files. Commands are
 
 #### Built-in Commands
 
-- `open {path}` - Open a file or directory
+- `Open {path}` - Open a file or directory
 - `SetWP {path}` - Set the specified image as wallpaper
 
 #### Examples
 
 ```
 # Open all selected files in the viewer
-open *
+Open *
 
 # Move selected files to trash
 gio trash *
@@ -81,7 +81,7 @@ cp * ~/Pictures/Saved/
 convert {*} -resize 800x600 ~/Pictures/Resized/$(basename {*})
 
 # Open a specific directory
-open ${HOME}/Pictures
+Open ${HOME}/Pictures
 ```
 
 ### Keyboard Shortcuts
