@@ -72,11 +72,15 @@
           installPhase = ''
             mkdir -p $out/bin
             mkdir -p $out/share/applications
-
+	    mkdir -p $out/share/man/man1
+	    
             # Copy the Python script
             cp kubux-image-manager.py $out/bin/kubux-image-manager.py
             chmod +x $out/bin/kubux-image-manager.py
-            
+
+	    # Copy the man page
+	    cp kubux-image-manager.1 $out/share/man/man1
+
             # Create wrapper using makeWrapper for proper desktop integration
             makeWrapper ${pythonEnv}/bin/python $out/bin/kubux-image-manager \
               --add-flags "$out/bin/kubux-image-manager.py" \
