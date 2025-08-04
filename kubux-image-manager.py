@@ -32,6 +32,9 @@ from tkinter import TclError
 from tkinter import messagebox
 from tkinter import ttk
 
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
+
 import requests
 from PIL import Image, ImageTk
 
@@ -179,6 +182,37 @@ def get_linux_ui_font():
     font_name, font_size = get_linux_ui_font_info()
     return tkFont.Font(family=font_name, size=font_size)
     
+
+# --- watch directory ---
+
+class DirectoryEventHandler(FileSystemEventHandler):
+    def __init__(self, directory, image_picker):
+        # super().__init__(directory)
+        self.image_picker = image_picker
+        self.directory = directory
+        
+    def on_any_event(self, event):
+        # print(f"directory {self.directory} has changed.")
+        self.image_picker.after( 0, self.image_picker._repaint )
+
+
+class DirectoryWatcher():
+    def __init__(self, image_picker):
+        self.image_picker = image_picker
+        
+    def start_watching(self, directory):
+        self.event_handler = DirectoryEventHandler(directory, self.image_picker)
+        self.observer = Observer()
+        self.observer.schedule(self.event_handler, directory, recursive=False)
+        self.observer.start()
+
+    def stop_watching(self):
+        self.observer.stop()
+        self.observer.join()
+
+    def change_dir(self, directory):
+        self.stop_watching()
+        self.start_watching(directory)
 
 # --- image stuff ---
 
@@ -1363,6 +1397,7 @@ class ImagePicker(tk.Toplevel):
         self._image_dir = picker_info[1]
         self._geometry = picker_info[2]
         self._update_thumbnail_job = None
+        self.watcher = DirectoryWatcher(self)
         self.geometry(self._geometry)
         self._create_widgets()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -1440,7 +1475,8 @@ class ImagePicker(tk.Toplevel):
         self.thumbnail_slider.pack(anchor="e")
         dummy_C_label = tk.Label(self._control_frame, text="Size:", font=self.master.main_font)
         dummy_C_label.pack(side="right", padx=(12,0))
-        
+
+        self.watcher.start_watching(self._image_dir)
         self._browse_directory(self._image_dir)
         self._gallery_canvas.yview_moveto(0.0)
         self.after(100, self.focus_set)
@@ -1489,6 +1525,7 @@ class ImagePicker(tk.Toplevel):
              btn.config(highlightbackground=self.cget("background"))
 
     def _on_close(self):
+        self.watcher.stop_watching()
         self.master.open_picker_dialogs.remove(self)
         self.destroy()
 
@@ -1498,6 +1535,7 @@ class ImagePicker(tk.Toplevel):
             return
         
         self._image_dir = path
+        self.watcher.change_dir( path )
         try: # Added try-except for background_worker in case it's not global or initialized yet
             background_worker.current_dir = path
         except NameError:

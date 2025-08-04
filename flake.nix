@@ -37,6 +37,7 @@
             filelock
             rich
             tqdm
+	    watchdog
           ];
 
           # Skip tests as they might require API keys
