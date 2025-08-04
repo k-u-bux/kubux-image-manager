@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import traceback
 import hashlib
 import json
 import os
@@ -569,6 +570,90 @@ def settle_geometry(widget):
 
 # --- widgets ---
 
+class EditableLabelWithCopy(tk.Frame):
+    def __init__(self, master, initial_text="", on_rename_callback=None, font=None, **kwargs):
+        """
+        A widget with editable text field and a copy button using tk widgets.
+        
+        Args:
+            master: Parent widget
+            initial_text: Initial text in the field
+            on_rename_callback: Function to call when text is changed and widget loses focus
+                                Function should take (old_text, new_text) as parameters
+            font: Font to use for the entry and button
+            **kwargs: Additional arguments to pass to the Frame
+        """
+        super().__init__(master, **kwargs)
+        
+        self.original_text = initial_text
+        self.on_rename_callback = on_rename_callback
+        
+        # Create a variable to store the current text
+        self.text_var = tk.StringVar(value=initial_text)
+        
+        # Create the entry widget
+        self.entry = tk.Entry(self, textvariable=self.text_var, relief="flat", borderwidth=2)
+        if font:
+            self.entry.configure(font=font)
+        self.entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        
+        # Create the copy button
+        self.copy_button = tk.Button(
+            self, 
+            text="Copy", 
+            command=self._copy_to_clipboard,
+            relief=BUTTON_RELIEF,
+            borderwidth=2
+        )
+        if font:
+            self.copy_button.configure(font=font)
+        self.copy_button.pack(side="right")
+        
+        # Bind events
+        self.bind("<Enter>", self._on_enter)
+        self.entry.bind("<Enter>", self._on_enter)
+        self.copy_button.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+        self.entry.bind("<Return>", self._on_enter_pressed)
+        
+    def set_text(self, text):
+        """Update the text in the entry field and reset the original text"""
+        self.text_var.set(text)
+        self.original_text = text
+        
+    def get_text(self):
+        """Get the current text in the entry field"""
+        return self.text_var.get()
+    
+    def _copy_to_clipboard(self):
+        """Copy the current text to clipboard"""
+        text = self.text_var.get()
+        self.clipboard_clear()
+        self.clipboard_append(text)
+        
+        # Visual feedback that copy succeeded
+        current_bg = self.entry.cget("background")
+        current_fg = self.entry.cget("foreground")
+        self.entry.config(background="#90EE90", foreground="#000000")  # light green background
+        self.after(200, lambda: self.entry.config(background=current_bg, foreground=current_fg))
+    
+    def _on_enter(self, event=None):
+        self.entry.config(takefocus=1, state=tk.NORMAL)
+        self.entry.focus_set()
+        
+    def _on_leave(self, event=None):
+        self.entry.config(takefocus=0, state=tk.DISABLED)
+        
+    def _on_enter_pressed(self, event=None):
+        self._rename()
+        
+    def _rename(self):
+        new_text = self.text_var.get()
+        if new_text != self.original_text and self.on_rename_callback:
+            self.on_rename_callback(self.original_text, new_text)
+            self.original_text = new_text
+
+
 class ImageViewer(tk.Toplevel):
     """
     A widget for displaying an image with zooming and panning capabilities.
@@ -578,6 +663,8 @@ class ImageViewer(tk.Toplevel):
         super().__init__(master, class_="kubux-image-manager")
         
         self.image_path = image_info[0]
+        self.file_name = os.path.basename( self.image_path )
+        self.dir_name = os.path.dirname( self.image_path )
         self._geometry = image_info[1]
         self.original_image = get_full_size_image(self.image_path)
         self.display_image = None
@@ -587,62 +674,65 @@ class ImageViewer(tk.Toplevel):
         # Set window properties
         try:
             if os.path.islink(self.image_path):
-                title = f"symlink to {os.path.realpath(self.image_path)}"
+                title = f"{self.file_name} (symlink to {os.path.realpath(self.image_path)})"
             else:
-                title = self.image_path
+                title = self.file_name
         except Exception:
-            title = self.image_path
-            
+            title = self.file_name 
         self.title(title or "oops")
-        if self._geometry is None:
-            w, h = self.original_image.size
-            x = w
-            y = h
-            while x < 120 and y < 120 :
-                x = 2*x
-                y = 2*y
-            while 1300 < x or 900 < y:
-                x = x / 1.1
-                y = y / 1.1
-            self._geometry=f"{int(x)}x{int(y)}"
-            print(f"actual size = {w} x {h}, initial display geometry = {self._geometry}")
-        self.geometry(self._geometry)            
-        self.resizable(True, True)
-        self.wm_attributes("-type", "normal")
-        self.wm_attributes('-fullscreen', False)
-        self.protocol("WM_DELETE_WINDOW", self._close)
         
-        # Create a frame to hold the canvas and scrollbars
-        self.frame = ttk.Frame(self)
-        self.frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Create horizontal and vertical scrollbars
-        self.h_scrollbar = tk.Scrollbar(self.frame, orient=tk.HORIZONTAL, relief=SCROLLBAR_RELIEF)
-        self.v_scrollbar = tk.Scrollbar(self.frame, orient=tk.VERTICAL, relief=SCROLLBAR_RELIEF)
-        
-        # Create canvas for the image
-        self.canvas = tk.Canvas(
-            self.frame, 
-            xscrollcommand=self.h_scrollbar.set,
-            yscrollcommand=self.v_scrollbar.set,
-            bg="black"
+        if self._geometry is not None:
+            self.geometry(self._geometry)            
+
+        w, h = self.original_image.size
+        x = w
+        y = h
+        while x < 120 and y < 120 :
+            x = 2*x
+            y = 2*y
+        while 1300 < x or 900 < y:
+            x = x / 1.1
+            y = y / 1.1
+
+        canvas_width = int(x)
+        canvas_height = int(y)
+            
+        self.filename_widget = EditableLabelWithCopy(
+            self,
+            initial_text=self.file_name,
+            on_rename_callback=self._rename_current_image,
+            font=self.master.main_font
         )
+        self.filename_widget.pack(side="bottom", fill="x", padx=5, pady=(0, 5))
+
+
+        self.image_frame = tk.Frame(self)
+        self.image_frame.pack(side="top", fill=tk.BOTH, expand=True)
+            
+        # Create a frame to hold the canvas and scrollbars
+        if True:
+            self.h_scrollbar = tk.Scrollbar(self.image_frame, orient=tk.HORIZONTAL, relief=SCROLLBAR_RELIEF)
+            self.v_scrollbar = tk.Scrollbar(self.image_frame, orient=tk.VERTICAL, relief=SCROLLBAR_RELIEF)
+            self.canvas = tk.Canvas(
+                self.image_frame, 
+                xscrollcommand=self.h_scrollbar.set,
+                yscrollcommand=self.v_scrollbar.set,
+                bg="black",
+                width=canvas_width,
+                height=canvas_height
+            )
+            self.h_scrollbar.config(command=self.canvas.xview)
+            self.v_scrollbar.config(command=self.canvas.yview)
+            self.canvas.grid(row=0, column=0, sticky="nsew")        
+            self.h_scrollbar.grid(row=1, column=0, sticky="ew")
+            self.v_scrollbar.grid(row=0, column=1, sticky="ns")
         
-        # Configure scrollbars
-        self.h_scrollbar.config(command=self.canvas.xview)
-        self.v_scrollbar.config(command=self.canvas.yview)
-        
-        # Grid layout for canvas and scrollbars
-        self.canvas.grid(row=0, column=0, sticky="nsew")
-        self.h_scrollbar.grid(row=1, column=0, sticky="ew")
-        self.v_scrollbar.grid(row=0, column=1, sticky="ns")
-        
-        # Configure frame grid weights
-        self.frame.columnconfigure(0, weight=1)
-        self.frame.rowconfigure(0, weight=1)
+        self.image_frame.columnconfigure(0, weight=1)
+        self.image_frame.rowconfigure(0, weight=1)
+
         
         # Image display state
-        self.zoom_factor = 1.0
+        self.zoom_factor = x / w
         self.fit_to_window = True  # Start in "fit to window" mode
         
         # Pan control variables
@@ -650,17 +740,21 @@ class ImageViewer(tk.Toplevel):
         self.pan_start_y = 0
         self.panning = False
         
-        # Bind events
-        self._bind_events()
-        
-        self.update_idletasks()
-        self._update_image()
-        self.update_idletasks()
-        self._update_image()
-        
-        # Set focus to receive key events
+        self.bind("<Configure>", self._on_configure)
+        self._bind_canvas_events()
+        self.focus_set()
         self.canvas.focus_set()
-
+        
+        self.update_idletasks()
+        self._update_image()
+        self.update_idletasks()
+        
+        self.resizable(True, True)
+        self.wm_attributes("-type", "normal")
+        self.wm_attributes('-fullscreen', False)
+        self.protocol("WM_DELETE_WINDOW", self._close)
+        self._geometry=self.geometry()
+        
     def get_image_info(self):
         self._geometry = self.geometry()
         return self.image_path, self._geometry
@@ -769,50 +863,27 @@ class ImageViewer(tk.Toplevel):
             self.canvas.yview_moveto(0)  # Reset vertical scroll position
         else:
             self.v_scrollbar.grid()
-                            
-    def _center_on_parent(self):
-        """Center this window on its parent."""
-        self.update_idletasks()
-        parent = self.master
-        
-        # Get parent and self dimensions
-        parent_width = parent.winfo_width()
-        parent_height = parent.winfo_height()
-        parent_x = parent.winfo_rootx()
-        parent_y = parent.winfo_rooty()
-        
-        self_width = self.winfo_width()
-        self_height = self.winfo_height()
-        
-        # Calculate position
-        x = parent_x + (parent_width - self_width) // 2
-        y = parent_y + (parent_height - self_height) // 2
-        
-        # Set position
-        self.geometry(f"+{x}+{y}")
-    
-    def _bind_events(self):
-        """Bind all event handlers."""
-        # Keyboard events
-        self.bind("<Key>", self._on_key)
-        self.bind("<F11>", lambda e: self.toggle_fullscreen())
-        self.bind("<Escape>", self._on_escape)
-        
-        # Mouse events
+
+    def _canvas_focus(self, event):
+        self.canvas.focus_set()
+            
+    def _bind_canvas_events(self):
+        self.canvas.bind("<Enter>", self._canvas_focus)
+
+        self.canvas.bind("<Key>", self._on_key)
+        self.canvas.bind("<F11>", lambda e: self.toggle_fullscreen())
+        self.canvas.bind("<Escape>", self._on_escape)
+
         self.canvas.bind("<ButtonPress-1>", self._on_mouse_down)
         self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
-        
-        # Mouse wheel events
+
         if platform.system() == "Windows":
             self.canvas.bind("<MouseWheel>", self._on_mouse_wheel)
         else:
             self.canvas.bind("<Button-4>", self._on_mouse_wheel)
             self.canvas.bind("<Button-5>", self._on_mouse_wheel)
             
-        # Window events
-        self.bind("<Configure>", self._on_configure)
-    
     def _on_escape(self, event):
         self._close()
     
@@ -950,7 +1021,17 @@ class ImageViewer(tk.Toplevel):
             self.canvas.xview_moveto(max(0, min(1, x_view_fraction)))
             self.canvas.yview_moveto(max(0, min(1, y_view_fraction)))
 
-    
+    def _rename_current_image(self, old_name, new_name):
+        print(f"renaming from {old_name} to {new_name}")
+        try:
+            new_path = os.path.join(self.dir_name, new_name)
+            os.rename( self.image_path, new_path )
+            self.image_path = new_path
+            self.title( new_name )
+        except Exception as e:
+            print(f"renaming file {old_name} to {new_name} failed, error: {e}")    
+
+            
 class DirectoryThumbnailGrid(tk.Frame):
     def __init__(self, master=None, directory_path="", item_width=None, item_border_width=None,
                  button_config_callback=None, **kwargs):
@@ -1916,6 +1997,7 @@ class ImageManager(tk.Tk):
                 return
         except Exception as e:
             print(f"path {path} has problems, message: {e}")
+            traceback.print_exc()
         
     def open_image_file(self, file_path):
         print(f"opening file {file_path}")
