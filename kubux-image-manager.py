@@ -498,8 +498,6 @@ def list_relevant_files(dir_path):
     return file_list
 
 
-path_name_queue = queue.Queue()
-
 class BackgroundWorker:
     def background(self):
         while self.keep_running:
@@ -513,7 +511,7 @@ class BackgroundWorker:
                 if self.keep_running and ( old_size == self.current_size ) and ( old_directory == self.current_dir ):
                     # print(f"background: {path_name}")
                     get_or_make_thumbnail(path_name, old_size)
-                    path_name_queue.put(path_name)
+                    self.path_name_queue.put(path_name)
                 else:
                     break
             while self.keep_running and ( old_size == self.current_size ) and ( old_directory == self.current_dir ):
@@ -523,6 +521,9 @@ class BackgroundWorker:
         self.keep_running = True
         self.current_size = width
         self.current_dir = path
+        
+        self.path_name_queue = queue.Queue()
+
         self.worker = threading.Thread( target=self.background )
         self.block = threading.Event()
         self.worker.start()
@@ -658,7 +659,7 @@ class ImageViewer(tk.Toplevel):
     """
     A widget for displaying an image with zooming and panning capabilities.
     """
-    
+
     def __init__(self, master, image_info ):
         super().__init__(master, class_="kubux-image-manager")
         
@@ -754,7 +755,6 @@ class ImageViewer(tk.Toplevel):
         self.wm_attributes('-fullscreen', False)
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._geometry=self.geometry()
-        
     def get_image_info(self):
         self._geometry = self.geometry()
         return self.image_path, self._geometry
@@ -1477,6 +1477,16 @@ class ImagePicker(tk.Toplevel):
         self.geometry(self._geometry)
         self._create_widgets()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.after(50, self._cache_widget)
+
+    def _cache_widget(self):
+        try:
+            path_name = self.background_worker.path_name_queue.get_nowait()
+            self._gallery_grid._get_button(path_name, self._thumbnail_width)
+            # print(f"created button for {path_name} at size {self._thumbnail_max_size}")
+        except queue.Empty:
+            pass
+        self.after(50, self._cache_widget)
 
     def get_picker_info(self):
         self._geometry = self.geometry()
