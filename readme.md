@@ -96,14 +96,6 @@ The application stores configuration in:
 - `~/.config/kubux-image-manager/app_settings.json`
 - `~/.cache/kubux-thumbnail-cache/` for thumbnail cache
 
-## AI Image Generation (Optional)
-
-If you have a Together.ai API key, you can enable AI image generation features by creating a `.env` file with:
-
-```
-TOGETHER_API_KEY=your_api_key
-```
-
 ## License
 
 Licensed under the Apache License, Version 2.0. See LICENSE file for details.
