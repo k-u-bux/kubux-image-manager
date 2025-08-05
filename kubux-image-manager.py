@@ -575,17 +575,6 @@ def settle_geometry(widget):
 
 class EditableLabelWithCopy(tk.Frame):
     def __init__(self, master, initial_text="", info="", on_rename_callback=None, font=None, **kwargs):
-        """
-        A widget with editable text field and a copy button using tk widgets.
-        
-        Args:
-            master: Parent widget
-            initial_text: Initial text in the field
-            on_rename_callback: Function to call when text is changed and widget loses focus
-                                Function should take (old_text, new_text) as parameters
-            font: Font to use for the entry and button
-            **kwargs: Additional arguments to pass to the Frame
-        """
         super().__init__(master, **kwargs)
         
         self.original_text = initial_text
@@ -620,14 +609,16 @@ class EditableLabelWithCopy(tk.Frame):
         self.copy_button.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
         self.entry.bind("<Return>", self._on_enter_pressed)
+
+    def set_info(self, text):
+        self.info = text;
+        self.label.config(text=text)
         
     def set_text(self, text):
-        """Update the text in the entry field and reset the original text"""
         self.text_var.set(text)
         self.original_text = text
         
     def get_text(self):
-        """Get the current text in the entry field"""
         return self.text_var.get()
     
     def _copy_to_clipboard(self):
