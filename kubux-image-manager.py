@@ -755,7 +755,6 @@ class ImageViewer(tk.Toplevel):
         self._update_image()
 
     def _update_title(self):
-        w, h = self.original_image.size
         title = f"{self.file_name} (file)"
         try:
             if os.path.islink(self.image_path):
@@ -1029,10 +1028,10 @@ class ImageViewer(tk.Toplevel):
                 return
             os.rename( self.image_path, new_path )
             self.image_path = new_path
-            self._update_title()
+            self.file_name = os.path.basename( self.image_path )
         except Exception as e:
             print(f"renaming file {old_name} to {new_name} failed, error: {e}")    
-
+        self._update_title()
             
 class DirectoryThumbnailGrid(tk.Frame):
     def __init__(self, master=None, directory_path="", item_width=None, item_border_width=None,
