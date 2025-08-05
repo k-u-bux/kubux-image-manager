@@ -574,7 +574,7 @@ def settle_geometry(widget):
 # --- widgets ---
 
 class EditableLabelWithCopy(tk.Frame):
-    def __init__(self, master, initial_text="", on_rename_callback=None, font=None, **kwargs):
+    def __init__(self, master, initial_text="", info="", on_rename_callback=None, font=None, **kwargs):
         """
         A widget with editable text field and a copy button using tk widgets.
         
@@ -589,12 +589,13 @@ class EditableLabelWithCopy(tk.Frame):
         super().__init__(master, **kwargs)
         
         self.original_text = initial_text
+        self.info = info
         self.on_rename_callback = on_rename_callback
+
+        self.label = tk.Label(self, text=info, font=font)
+        self.label.pack(side="left", padx=(0,5))
         
-        # Create a variable to store the current text
         self.text_var = tk.StringVar(value=initial_text)
-        
-        # Create the entry widget
         self.entry = tk.Entry(self, textvariable=self.text_var, relief="flat", borderwidth=2)
         if font:
             self.entry.configure(font=font)
@@ -614,6 +615,7 @@ class EditableLabelWithCopy(tk.Frame):
         
         # Bind events
         self.bind("<Enter>", self._on_enter)
+        self.label.bind("<Enter>", self._on_enter)
         self.entry.bind("<Enter>", self._on_enter)
         self.copy_button.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
@@ -674,16 +676,6 @@ class ImageViewer(tk.Toplevel):
         self.photo_image = None
         self.is_fullscreen = False
         
-        # Set window properties
-        try:
-            if os.path.islink(self.image_path):
-                title = f"{self.file_name} (symlink to {os.path.realpath(self.image_path)})"
-            else:
-                title = self.file_name
-        except Exception:
-            title = self.file_name 
-        self.title(title or "oops")
-        
         if self._geometry is not None:
             self.geometry(self._geometry)            
 
@@ -703,6 +695,7 @@ class ImageViewer(tk.Toplevel):
         self.filename_widget = EditableLabelWithCopy(
             self,
             initial_text=self.file_name,
+            info=f"{w}x{h}",
             on_rename_callback=self._rename_current_image,
             font=self.master.main_font
         )
@@ -751,12 +744,14 @@ class ImageViewer(tk.Toplevel):
         self.update_idletasks()
         self._update_image()
         self.update_idletasks()
-        
+
+        self._update_title()
         self.resizable(True, True)
         self.wm_attributes("-type", "normal")
         self.wm_attributes('-fullscreen', False)
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._geometry=self.geometry()
+        
     def get_image_info(self):
         self._geometry = self.geometry()
         return self.image_path, self._geometry
@@ -767,7 +762,18 @@ class ImageViewer(tk.Toplevel):
         self.attributes('-fullscreen', self.is_fullscreen)
         self.update_idletasks()
         self._update_image()
-    
+
+    def _update_title(self):
+        w, h = self.original_image.size
+        title = f"{self.file_name} (file)"
+        try:
+            if os.path.islink(self.image_path):
+                title = f"{self.file_name} (symlink to {os.path.realpath(self.image_path)})"
+        except Exception as e:
+            print(f"Problem dealing with path {self.image_path}, error: {e}")
+            title = "oops"
+        self.title(title)
+        
     def _update_image(self):
         """Update the displayed image based on current zoom and size."""
         if not self.original_image:
@@ -1032,7 +1038,7 @@ class ImageViewer(tk.Toplevel):
                 return
             os.rename( self.image_path, new_path )
             self.image_path = new_path
-            self.title( new_name )
+            self._update_title()
         except Exception as e:
             print(f"renaming file {old_name} to {new_name} failed, error: {e}")    
 
