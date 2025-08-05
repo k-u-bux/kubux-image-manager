@@ -1,5 +1,7 @@
 # README.md for Kubux Image Manager
 
+![Kubux Image Manager](screenshots/all-windows.png)
+
 ## Overview
 
 Kubux Image Manager is a powerful yet simple Tkinter-based image management application for Linux desktop environments. It provides an intuitive interface for browsing, viewing, organizing, and manipulating image files with support for batch operations through customizable commands.
