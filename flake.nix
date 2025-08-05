@@ -1,5 +1,5 @@
 {
-  description = "Kubux AI Image Generator";
+  description = "Kubux AI Image Manager";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
