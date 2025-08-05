@@ -1372,16 +1372,8 @@ class BreadCrumNavigator(ttk.Frame):
             btn.pack(side="right")
             if i + 1< len(btn_list):
                 ttk.Label(self, text="/").pack(side="right")
-        
-#        first_i = max( 0, len( btn_list ) - 3 )
-#        for i, btn in enumerate( btn_list ):
-#            if i >= first_i:
-#                if i > first_i:
-#                    ttk.Label(self, text=" / ").pack(side="left")
-#                if i + 1 == len( btn_list ):
-#                    btn.bind("<ButtonPress-1>", self._on_button_press_menu)
-#                btn.pack(side="left")
-
+            if i == 0:
+                btn.bind("<ButtonPress-1>", self._on_button_press_menu)
 
     def _trigger_navigate(self, path):
         if self._on_navigate_callback:
