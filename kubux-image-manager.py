@@ -376,6 +376,7 @@ def make_tk_image( pil_image ):
 
 
 # --- dialogue box ---
+
 def fallback_show_error(title, message):
     messagebox.showerror(title, message)
     
@@ -637,6 +638,69 @@ def settle_geometry(widget):
     widget.update_idletasks()
 
 
+# --- drag and drop support ---
+
+DRAG_DELAY_MS = 250
+DRAG_THRESHOLD = 5
+
+def bind_click_or_drag(root, widget, make_ghost, short_click_handler):
+    state = {
+        'drag_start_timer': None,
+        'ghost': None,
+        'drag_start_x': 0,
+        'drag_start_y': 0,
+        'dragging_widget': None
+    }
+
+    def start_drag():
+        state['drag_start_timer'] = None
+        state['ghost'] = make_ghost(state['dragging_widget'], state['drag_start_x'], state['drag_start_y'])
+        root.bind("<B1-Motion>", do_drag)
+        root.bind("<ButtonRelease-1>", end_drag)
+
+    def do_drag(event):
+        state['ghost'].geometry(f"+{event.x_root - 10}+{event.y_root - 10}")
+
+    def end_drag(event):
+        x, y = event.x_root, event.y_root
+        state['ghost'].destroy()
+        state['ghost'] = None
+        target_widget = root.winfo_containing(x, y)
+        if target_widget and hasattr(target_widget, 'handle_drop'):
+            # The payload is the dragging_widget itself
+            target_widget.handle_drop(state['dragging_widget'])
+        else:
+            print("Dropped outside any target zone.")
+        root.unbind("<B1-Motion>")
+        root.unbind("<ButtonRelease-1>")
+        state['dragging_widget'] = None
+        
+    def on_press(event):
+        state['drag_start_x'] = event.x_root
+        state['drag_start_y'] = event.y_root
+        state['dragging_widget'] = event.widget
+        state['drag_start_timer'] = root.after(DRAG_DELAY_MS, start_drag)
+        
+    def on_motion(event):
+        if state['drag_start_timer'] and state['dragging_widget']:
+            distance_moved = ((event.x_root - state['drag_start_x'])**2 + (event.y_root - state['drag_start_y'])**2)**0.5
+            if distance_moved > DRAG_THRESHOLD:
+                root.after_cancel(state['drag_start_timer'])
+                state['drag_start_timer'] = None
+                start_drag()
+
+    def on_release(event):
+        if state['drag_start_timer']:
+            root.after_cancel(state['drag_start_timer'])
+            state['drag_start_timer'] = None
+            short_click_handler(event.widget)
+            state['dragging_widget'] = None
+
+    widget.bind("<Button-1>", on_press)
+    widget.bind("<B1-Motion>", on_motion)
+    widget.bind("<ButtonRelease-1>", on_release)
+
+    
 # --- widgets ---
 
 class EditableLabelWithCopy(tk.Frame):
