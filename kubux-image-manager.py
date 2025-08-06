@@ -184,6 +184,72 @@ def get_linux_ui_font():
     return tkFont.Font(family=font_name, size=font_size)
     
 
+# --- file ops ---
+
+def move_file(file_path, target_dir_path):
+    """
+    Moves a file or symbolic link to a new directory, preserving symlink validity.
+
+    Args:
+        file_path (str): The full path to the file or symlink to be moved.
+        target_dir_path (str): The path to the directory where the item should be moved.
+
+    Returns:
+        bool: True if the item was moved successfully, False otherwise.
+    """
+    try:
+        # Check if the source path exists
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Source file or link not found: '{file_path}'")
+        
+        # Ensure the target directory exists
+        if not os.path.isdir(target_dir_path):
+            os.makedirs(target_dir_path, exist_ok=True)
+        
+        # Determine the name of the file/link
+        item_name = os.path.basename(file_path)
+        new_path = os.path.join(target_dir_path, item_name)
+
+        # --- Logic for handling symbolic links ---
+        if os.path.islink(file_path):
+            link_target = os.readlink(file_path)
+            
+            if os.path.isabs(link_target):
+                # If absolute, just move the symlink file itself.
+                shutil.move(file_path, new_path)
+                print(f"Moved absolute symlink '{item_name}' to '{target_dir_path}'")
+            else:
+                # If relative, we must calculate the new relative path.
+                original_link_dir = os.path.dirname(os.path.abspath(file_path))
+                target_abs_path = os.path.normpath(os.path.join(original_link_dir, link_target))
+                new_link_dir = os.path.abspath(target_dir_path)
+                new_relative_path = os.path.relpath(target_abs_path, new_link_dir)
+                
+                # Remove the old link and create a new one with the corrected path.
+                os.remove(file_path)
+                os.symlink(new_relative_path, new_path)
+                print(f"Moved relative symlink '{item_name}' to '{target_dir_path}' and updated its target.")
+        else:
+            # It's a regular file, so use shutil.move for simplicity.
+            shutil.move(file_path, new_path)
+            print(f"Moved file '{item_name}' to '{target_dir_path}'")
+
+        return True
+        
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        return False
+    except PermissionError:
+        print(f"Error: Permission denied. Cannot move '{file_path}'")
+        return False
+    except shutil.Error as e:
+        print(f"Error moving file with shutil: {e}")
+        return False
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return False
+
+
 # --- watch directory ---
 
 class DirectoryEventHandler(FileSystemEventHandler):
@@ -1888,7 +1954,10 @@ class ImageManager(tk.Tk):
                 dummy_C_label.pack(side="right", padx=(12,0))
 
         self.update_button_status()
-                
+
+    def sanitize_selected_files(self):
+        self.selected_files[:] = [path for path in self.selected_files if os.path.exists(path)]
+        
     def execute_command_with_args(self, command, args):
         print(f"execute: {command} with args = {args}")
         command = expand_env_vars(command)
@@ -1917,6 +1986,7 @@ class ImageManager(tk.Tk):
         self.execute_command_with_args( command, self.selected_files)
                 
     def execute_current_command(self):
+        self.sanitize_selected_files()
         self.execute_command(self.command_field.current_command())
 
     def execute_current_command_with_args(self, args):
