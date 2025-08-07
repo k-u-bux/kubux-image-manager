@@ -1,4 +1,4 @@
-.TH KUBUX-IMAGE-MANAGER 1 "June 2023" "Version 1.0" "User Commands"
+.TH KUBUX-IMAGE-MANAGER 1 "August 2025" "Version 0.9" "User Commands"
 .SH NAME
 kubux-image-manager \- a flexible image browsing and batch processing tool
 .SH SYNOPSIS
@@ -16,23 +16,50 @@ resized using the slider control.
 .SS Image Viewing
 Double-click or right-click on thumbnails to view images in a dedicated viewer window with zoom
 and pan capabilities. The viewer supports keyboard and mouse controls for navigation.
-.SS File Selection
-Left-click on thumbnails to select them for batch operations. Selected files are highlighted with
+.SS File Selection and Movement
+Left-click on thumbnails to toggle selection for batch operations. Selected files are highlighted with
 a blue border and can be processed with commands from the main window.
+
+Left-drag selected files to move them all to another directory (via breadcrumb buttons or another browser window).
+Right-drag individual files to move just that file regardless of selection status.
 .SS Command System
 A text field at the top of the main window accepts commands to execute on selected files.
-Commands can be built-in (open, SetWP) or any shell command. Double-click a command to execute it
-or use the "Process selected" button.
+Double-click a command to execute it or use the "Process selected" button.
 .SH COMMANDS
 .TP
-.B Open PATH
+.B Open: PATH
 Opens the specified file or directory. If a directory, opens in a new browser window. If an image file, opens in the image viewer.
 .TP
-.B SetWP PATH
+.B SetWP: PATH
 Sets the specified image as desktop wallpaper (compatible with most Linux desktop environments).
+.TP
+.B Select: COMMAND
+Executes the shell command and selects all files returned in its output.
+.TP
+.B Deselect: COMMAND
+Executes the shell command and deselects all files returned in its output.
 .TP
 .B any shell command
 Executes the shell command with the ability to use wildcards for selected files.
+.SH MOUSE OPERATIONS
+.TP
+.B Left-click thumbnail
+Toggle selection status of the image.
+.TP
+.B Left-drag thumbnail
+Start dragging all selected files (including the clicked one if not already selected).
+.TP
+.B Left-drop on directory
+Move all selected files to the target directory.
+.TP
+.B Right-click thumbnail
+Execute the current command on just that specific file.
+.TP
+.B Right-drag thumbnail
+Start dragging only that specific file (regardless of selection status).
+.TP
+.B Right-drop on directory
+Move only that specific file to the target directory.
 .SH WILDCARDS
 .TP
 .B *
@@ -40,12 +67,14 @@ Expands to all selected files as separate arguments in a single command.
 .TP
 .B {*}
 Creates a separate command for each selected file, replacing {*} with the individual file path.
+.SH ENVIRONMENT VARIABLES
+Environment variables can be accessed using the ${VARIABLE_NAME} syntax in commands.
 .SH EXAMPLES
 .TP
-.B Open ${HOME}/Pictures
+.B Open: ${HOME}/Pictures
 Open the Pictures directory in a browser window.
 .TP
-.B SetWP *
+.B SetWP: *
 Set the first selected image as wallpaper.
 .TP
 .B cp * ~/Pictures/Backup/
@@ -54,8 +83,11 @@ Copy all selected files to the Backup directory.
 .B convert {*} -resize 800x600 ~/Pictures/Resized/$(basename {*})
 Resize each selected image to 800x600 and save to the Resized directory.
 .TP
-.B echo {*} >> /tmp/files
-Append each file path to /tmp/files on a new line.
+.B Select: find . -name "*.jpg" -mtime -7
+Select all JPG files modified in the last 7 days.
+.TP
+.B Deselect: find . -size +5M
+Deselect all files larger than 5MB.
 .SH KEYBOARD SHORTCUTS
 .SS Main Window
 .TP

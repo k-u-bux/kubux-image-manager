@@ -11,7 +11,8 @@ Kubux Image Manager is a powerful yet simple Tkinter-based image management appl
 - **Flexible Image Browsing**: Navigate your file system with an intuitive breadcrumb interface
 - **Thumbnail Gallery**: View image thumbnails with adjustable size
 - **Advanced Image Viewer**: Built-in viewer with zoom, pan, and fullscreen capabilities
-- **Multiple Selection**: Select multiple files for batch operations
+- **Multi-Selection Operations**: Select multiple files for batch operations
+- **Drag and Drop File Management**: Move files between directories with intuitive mouse operations
 - **Command System**: Execute custom commands on selected files with support for wildcards and environment variables
 - **Multi-window Interface**: Open multiple browser windows simultaneously for different folders
 - **Persistent Settings**: Application remembers window positions, open directories, and selected files
@@ -38,9 +39,23 @@ nix run github:k-u-bux/kubux-image-manager
 ### Basic Navigation
 
 - **Browse Images**: Use the breadcrumb navigation to move between directories
-- **View Images**: Double-click or right-click on a thumbnail to open it in the viewer
-- **Select Images**: Left-click on thumbnails to select them for batch operations
+- **View Images**: Right-click on a thumbnail to open it in the viewer
+- **Select Images**: Left-click on thumbnails to toggle selection for batch operations
 - **Clear Selection**: Use the "Clear selection" button to deselect all images
+
+### Mouse Operations
+
+Kubux Image Manager has a dual-button approach for file operations:
+
+#### Left Mouse Button (Selection Operations)
+- **Left-click**: Toggle selection status of the clicked file
+- **Left-drag**: Drag all currently selected files
+- **Left-drop**: Move all selected files to the target directory
+
+#### Right Mouse Button (Single File Operations)
+- **Right-click**: Execute the current command on just that specific file
+- **Right-drag**: Drag only that specific file (regardless of selection status)
+- **Right-drop**: Move only that specific file to the target directory
 
 ### Commands
 
@@ -53,14 +68,16 @@ The application uses a command system to operate on selected files. Commands are
 
 #### Built-in Commands
 
-- `Open {path}` - Open a file or directory
-- `SetWP {path}` - Set the specified image as wallpaper
+- `Open: {path}` - Open a file or directory
+- `SetWP: {path}` - Set the specified image as wallpaper
+- `Select: {command}` - Run command and select all files in its output
+- `Deselect: {command}` - Run command and deselect all files in its output
 
 #### Examples
 
 ```
 # Open all selected files in the viewer
-Open *
+Open: *
 
 # Move selected files to trash
 gio trash *
@@ -72,7 +89,13 @@ cp * ~/Pictures/Saved/
 convert {*} -resize 800x600 ~/Pictures/Resized/$(basename {*})
 
 # Open a specific directory
-Open ${HOME}/Pictures
+Open: ${HOME}/Pictures
+
+# Select all JPG files modified in the last week
+Select: find . -name "*.jpg" -mtime -7
+
+# Deselect all files larger than 5MB
+Deselect: find . -size +5M
 ```
 
 ### Keyboard Shortcuts
@@ -80,6 +103,11 @@ Open ${HOME}/Pictures
 #### Main Window
 - **Enter**: Execute the current command
 - **Escape**: Close a dialog or window
+
+#### Image Browser
+- **Up/Down**: Scroll the thumbnail grid
+- **Page Up/Down**: Scroll the thumbnail grid by pages
+- **Escape**: Close the browser window
 
 #### Image Viewer
 - **+/=**: Zoom in
@@ -106,8 +134,11 @@ Copyright 2025 Kai-Uwe Bux
 
 ## Tips
 
-1. **Batch Processing**: Create custom commands for common operations like resizing, converting, or uploading.
-2. **Multiple Browsers**: Use the "Clone" button to open multiple browser windows for easier file management.
-3. **Thumbnail Size**: Adjust the thumbnail size slider for better visibility of your images.
-4. **Command History**: Commands are saved between sessions for easy reuse.
-5. **Quick Navigation**: Long-press on any breadcrumb segment to reveal a directory selection menu.
+1. **File Selection**: Use the new `Select:` command with `find` for powerful file selection based on attributes like modification time, size, or name patterns.
+2. **File Movement**: Right-drag individual files for quick one-off moves without disturbing your current selection.
+3. **Batch Processing**: Create custom commands for common operations like resizing, converting, or uploading.
+4. **Multiple Browsers**: Use the "Clone" button to open multiple browser windows for side-by-side file management.
+5. **Thumbnail Size**: Adjust the thumbnail size slider for better visibility of your images.
+6. **Command History**: Commands are saved between sessions for easy reuse.
+7. **Quick Navigation**: Long-press on any breadcrumb segment to reveal a directory selection menu.
+8. **UI Scaling**: Use the UI scale slider to adjust the interface size based on your screen resolution.
