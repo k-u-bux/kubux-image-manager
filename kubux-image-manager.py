@@ -694,7 +694,7 @@ def bind_click_or_drag(source_widget, make_ghost, click_handler):
                 # print(f"moving up the hierarchy to master = {target_widget}")                
             elif hasattr(target_widget, 'winfo_parent'):
                 # print(f"{target_widget} cannot handle drop")
-                target_widget = target_widget.winfo_parent()
+                target_widget = target_widget.winfo_parent().nametowidget()
                 # print(f"moving up the hierarchy to parent = {target_widget}")
             else:
                 # print(f"{target_widget} cannot handle drop and has no way to move up the hierarchy")
