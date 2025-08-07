@@ -683,7 +683,7 @@ def bind_click_or_drag(source_widget, make_ghost, click_handler):
         state['ghost'] = None
         target_widget = root_window.winfo_containing(x, y)
         while target_widget:
-            print(f"trying drop on {target_widget}")
+            # print(f"trying drop on {target_widget}")
             if hasattr(target_widget, 'handle_drop'):
                 # print(f"{target_widget} should handle drop")
                 target_widget.handle_drop(state['dragging_widget'])
