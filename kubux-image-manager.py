@@ -189,8 +189,8 @@ def get_linux_ui_font():
 # --- file ops ---
 
 def is_file_in_dir(file_path, dir_path):
-    file_path = os.path.realpath(file_path)
-    dir_path = os.path.realpath(dir_path)
+    file_path = os.path.abspath(file_path)
+    dir_path = os.path.abspath(dir_path)
     return file_path.startswith(dir_path + os.sep)
 
 def execute_shell_command(command):
