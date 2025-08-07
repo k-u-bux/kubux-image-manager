@@ -274,7 +274,7 @@ def move_file_to_directory(file_path, target_dir_path):
         print(f"An unexpected error occurred: {e}")
         return None
 
-
+    
 # --- watch directory ---
 
 class DirectoryEventHandler(FileSystemEventHandler):
@@ -827,7 +827,7 @@ def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler):
         if state['drag_start_timer']:
             root_window.after_cancel(state['drag_start_timer'])
             state['drag_start_timer'] = None
-            click_handler(event.widget)
+            right_click_handler(event.widget)
             state['dragging_widget'] = None
 
     source_widget.bind("<Button-3>", on_press)
@@ -1634,6 +1634,7 @@ class BreadCrumNavigator(ttk.Frame):
         dummy_frame = tk.Frame(self)
         dummy_frame.pack(side="right", fill="x", expand=True)
         for i, btn in enumerate( reversed(btn_list) ):
+            bind_drop( btn, self._handle_drop)
             bind_right_drop( btn, self._handle_right_drop)
             btn.pack(side="right")
             if i + 1< len(btn_list):
@@ -1641,6 +1642,9 @@ class BreadCrumNavigator(ttk.Frame):
             if i == 0:
                 btn.bind("<ButtonPress-1>", self._on_button_press_menu)
 
+    def _handle_drop(self, source_button, target_button):
+        self.master.master.master.move_selected_files_to_directory(source_button.img_path, target_button.path)
+        
     def _handle_right_drop(self, source_button, target_button):
         self.master.master.master.move_file_to_directory(source_button.img_path, target_button.path)
         
@@ -1759,6 +1763,9 @@ class ImagePicker(tk.Toplevel):
         self._gallery_grid.set_size_and_path(self._thumbnail_width, self._image_dir)
         self.update_idletasks()
 
+    def _handle_drop(self, source_button, target_picker):
+        self.master.move_selected_files_to_directory(source_button.img_path, target_picker._image_dir)
+        
     def _handle_right_drop(self, source_button, target_picker):
         self.master.move_file_to_directory(source_button.img_path, target_picker._image_dir)
         
@@ -1828,7 +1835,9 @@ class ImagePicker(tk.Toplevel):
         self._gallery_canvas.yview_moveto(0.0)
         self.after(100, self.focus_set)
 
+        bind_drop(self, self._handle_drop)
         bind_right_drop(self, self._handle_right_drop)
+
 
     def _adjust_gallery_scroll_position(self, old_scroll_fraction=0.0):
         bbox = self._gallery_canvas.bbox("all")
@@ -1862,8 +1871,8 @@ class ImagePicker(tk.Toplevel):
         ghost.geometry(f"+{x - 10}+{y - 10}")
         return ghost
     
-    def _exec_cmd_for_image(self, event):
-        args = [ event.widget.img_path ]
+    def _exec_cmd_for_image(self, widget):
+        args = [ widget.img_path ]
         self.master.execute_current_command_with_args( args )
         
     def _configure_picker_button(self, btn, img_path, tk_thumbnail):
@@ -1875,10 +1884,7 @@ class ImagePicker(tk.Toplevel):
             highlightthickness=3,
             bg=self.cget("background")
         )
-        # btn.bind("<Button-1>", self._toggle_selection)
-        # bind_click_or_drag(btn, self._make_ghost, self._toggle_selection)
-        # btn.bind("<Button-3>", self._exec_cmd_for_image)
-        btn.bind("<Button-1>",  self._toggle_selection)
+        bind_click_or_drag(btn, self._make_ghost, self._toggle_selection)
         bind_right_click_or_drag(btn, self._make_ghost, self._exec_cmd_for_image)
         
         if img_path in self.master.selected_files:
@@ -2190,6 +2196,19 @@ class ImageManager(tk.Tk):
         if file_path in self.selected_files:
             self.unselect_file(file_path)
             self.select_file(new_path)
+        self.broadcast_contents_change()
+        
+    def move_selected_files_to_directory(self, file_path, target_dir):
+        source_dir = os.path.realpath(os.path.dirname(file_path))
+        print(f"move sselected files from {source_dir} to directory {target_dir}")
+        old_selected = self.selected_files
+        self.selected_files = []
+        for file in old_selected:
+            if is_file_in_dir(file, source_dir):                
+                new_path = move_file_to_directory(file, target_dir)
+                self.selected_files.append(new_path)
+            else:
+                self.selected_files.append(file)
         self.broadcast_contents_change()
         
     def sanitize_selected_files(self):
