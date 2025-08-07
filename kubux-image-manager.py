@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import traceback
+import types
+import shutil
 import hashlib
 import json
 import os
@@ -186,7 +188,7 @@ def get_linux_ui_font():
 
 # --- file ops ---
 
-def move_file(file_path, target_dir_path):
+def move_file_to_directory(file_path, target_dir_path):
     """
     Moves a file or symbolic link to a new directory, preserving symlink validity.
 
@@ -195,7 +197,8 @@ def move_file(file_path, target_dir_path):
         target_dir_path (str): The path to the directory where the item should be moved.
 
     Returns:
-        bool: True if the item was moved successfully, False otherwise.
+        the new file path: if the file was move successfully
+        None: otherwise
     """
     try:
         # Check if the source path exists
@@ -234,20 +237,20 @@ def move_file(file_path, target_dir_path):
             shutil.move(file_path, new_path)
             print(f"Moved file '{item_name}' to '{target_dir_path}'")
 
-        return True
+        return new_path
         
     except FileNotFoundError as e:
         print(f"Error: {e}")
-        return False
+        return None
     except PermissionError:
         print(f"Error: Permission denied. Cannot move '{file_path}'")
-        return False
+        return None
     except shutil.Error as e:
         print(f"Error moving file with shutil: {e}")
-        return False
+        return None
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
-        return False
+        return None
 
 
 # --- watch directory ---
@@ -643,7 +646,13 @@ def settle_geometry(widget):
 DRAG_DELAY_MS = 250
 DRAG_THRESHOLD = 5
 
-def bind_click_or_drag(root, widget, make_ghost, short_click_handler):
+def bind_drop(target_widget, handle_drop):
+    def wrapper(self, source_widget):
+        handle_drop(source_widget, target_widget)
+    target_widget.handle_drop = types.MethodType(wrapper, target_widget)
+
+def bind_click_or_drag(source_widget, make_ghost, click_handler):
+    # todo: why are we using a dict here ?
     state = {
         'drag_start_timer': None,
         'ghost': None,
@@ -651,54 +660,58 @@ def bind_click_or_drag(root, widget, make_ghost, short_click_handler):
         'drag_start_y': 0,
         'dragging_widget': None
     }
-
+    root_window = source_widget.winfo_toplevel()
+    
     def start_drag():
+        # print(f"start draggin in root {root_window} with state {state}")
         state['drag_start_timer'] = None
         state['ghost'] = make_ghost(state['dragging_widget'], state['drag_start_x'], state['drag_start_y'])
-        root.bind("<B1-Motion>", do_drag)
-        root.bind("<ButtonRelease-1>", end_drag)
+        root_window.bind("<B1-Motion>", do_drag)
+        root_window.bind("<ButtonRelease-1>", end_drag)
 
     def do_drag(event):
+        # print(f"moving to {event.x_root}+{event.y_root}")
         state['ghost'].geometry(f"+{event.x_root - 10}+{event.y_root - 10}")
 
     def end_drag(event):
+        # print(f"dropping at {event.x_root}+{event.y_root}")
         x, y = event.x_root, event.y_root
         state['ghost'].destroy()
         state['ghost'] = None
-        target_widget = root.winfo_containing(x, y)
+        target_widget = root_window.winfo_containing(x, y)
         if target_widget and hasattr(target_widget, 'handle_drop'):
             # The payload is the dragging_widget itself
             target_widget.handle_drop(state['dragging_widget'])
         else:
             print("Dropped outside any target zone.")
-        root.unbind("<B1-Motion>")
-        root.unbind("<ButtonRelease-1>")
+        root_window.unbind("<B1-Motion>")
+        root_window.unbind("<ButtonRelease-1>")
         state['dragging_widget'] = None
         
     def on_press(event):
         state['drag_start_x'] = event.x_root
         state['drag_start_y'] = event.y_root
         state['dragging_widget'] = event.widget
-        state['drag_start_timer'] = root.after(DRAG_DELAY_MS, start_drag)
+        state['drag_start_timer'] = root_window.after(DRAG_DELAY_MS, start_drag)
         
     def on_motion(event):
         if state['drag_start_timer'] and state['dragging_widget']:
             distance_moved = ((event.x_root - state['drag_start_x'])**2 + (event.y_root - state['drag_start_y'])**2)**0.5
             if distance_moved > DRAG_THRESHOLD:
-                root.after_cancel(state['drag_start_timer'])
+                root_window.after_cancel(state['drag_start_timer'])
                 state['drag_start_timer'] = None
                 start_drag()
 
     def on_release(event):
         if state['drag_start_timer']:
-            root.after_cancel(state['drag_start_timer'])
+            root_window.after_cancel(state['drag_start_timer'])
             state['drag_start_timer'] = None
-            short_click_handler(event.widget)
+            click_handler(event.widget)
             state['dragging_widget'] = None
 
-    widget.bind("<Button-1>", on_press)
-    widget.bind("<B1-Motion>", on_motion)
-    widget.bind("<ButtonRelease-1>", on_release)
+    source_widget.bind("<Button-1>", on_press)
+    source_widget.bind("<B1-Motion>", on_motion)
+    source_widget.bind("<ButtonRelease-1>", on_release)
 
     
 # --- widgets ---
@@ -1436,6 +1449,7 @@ class BreadCrumNavigator(ttk.Frame):
                  long_press_threshold_ms=400, drag_threshold_pixels=5):
         
         super().__init__(master)
+        self.master = master
         self._on_navigate_callback = on_navigate_callback
         self._current_path = ""
 
@@ -1497,12 +1511,16 @@ class BreadCrumNavigator(ttk.Frame):
         dummy_frame = tk.Frame(self)
         dummy_frame.pack(side="right", fill="x", expand=True)
         for i, btn in enumerate( reversed(btn_list) ):
+            bind_drop( btn, self._handle_drop)
             btn.pack(side="right")
             if i + 1< len(btn_list):
                 ttk.Label(self, text="/").pack(side="right")
             if i == 0:
                 btn.bind("<ButtonPress-1>", self._on_button_press_menu)
 
+    def _handle_drop(self, source_button, target_button):
+        self.master.master.master.move_file_to_directory(source_button.img_path, target_button.path)
+        
     def _trigger_navigate(self, path):
         if self._on_navigate_callback:
             self._on_navigate_callback(path)
@@ -1709,25 +1727,36 @@ class ImagePicker(tk.Toplevel):
 
         self._gallery_canvas.yview_moveto(new_scroll_fraction)
         
-    def _show_full_image(self, img_path):
-        args = [ img_path ]
+    def _make_ghost(self, button, x, y):
+        ghost = tk.Toplevel(self.master)
+        ghost.overrideredirect(True)
+        ghost.attributes('-alpha', 0.7)
+        ghost_label = tk.Label(ghost, image=button['image'], bg=button['bg'], relief=button['relief'], padx=10, pady=5)
+        ghost_label.pack()
+        ghost.geometry(f"+{x - 10}+{y - 10}")
+        return ghost
+    
+    def _exec_cmd_for_image(self, event):
+        args = [ event.widget.img_path ]
         self.master.execute_current_command_with_args( args )
         
     def _configure_picker_button(self, btn, img_path, tk_thumbnail):
-         btn.config(
+        btn.img_path = img_path
+        btn.config(
             cursor="hand2", 
             relief="flat", 
             borderwidth=0,
             highlightthickness=3,
-            bg=self.cget("background"),
-            command=lambda dummy=None: self._toggle_selection(img_path, btn)
-         )
-         btn.bind("<Button-3>", lambda dummy: self._show_full_image(img_path))
+            bg=self.cget("background")
+        )
+        # btn.bind("<Button-1>", self._toggle_selection)
+        bind_click_or_drag(btn, self._make_ghost, self._toggle_selection)
+        btn.bind("<Button-3>", self._exec_cmd_for_image)
         
-         if img_path in self.master.selected_files:
-             btn.config(highlightbackground="blue")
-         else:
-             btn.config(highlightbackground=self.cget("background"))
+        if img_path in self.master.selected_files:
+            btn.config(highlightbackground="blue")
+        else:
+            btn.config(highlightbackground=self.cget("background"))
 
     def _on_close(self):
         self.background_worker.stop()
@@ -1749,8 +1778,8 @@ class ImagePicker(tk.Toplevel):
         self._repaint()
         self._adjust_gallery_scroll_position()
 
-    def _toggle_selection(self, img_path, button_widget):
-        self.master.toggle_selection(img_path)
+    def _toggle_selection(self, button):
+        self.master.toggle_selection(button.img_path)
 
     def _on_canvas_configure(self, event):
         self._gallery_canvas.itemconfig(self._gallery_canvas.find_all()[0], width=event.width)
@@ -2019,6 +2048,14 @@ class ImageManager(tk.Tk):
 
         self.update_button_status()
 
+    def move_file_to_directory(self, file_path, target_dir):
+        print(f"move file {file_path} to directory {target_dir}")
+        new_path = move_file_to_directory(file_path, target_dir)
+        if new_path:
+            if file_path in self.selected_files:
+                self.selected_files.remove( file_path )
+                self.selected_files.append( new_path )
+                
     def sanitize_selected_files(self):
         self.selected_files[:] = [path for path in self.selected_files if os.path.exists(path)]
         
