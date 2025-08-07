@@ -63,7 +63,7 @@
       {
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "kubux-image-manager";
-          version = "1.0.0";
+          version = "0.9";
           
           src = ./.;
           
