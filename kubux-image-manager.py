@@ -682,11 +682,25 @@ def bind_click_or_drag(source_widget, make_ghost, click_handler):
         state['ghost'].destroy()
         state['ghost'] = None
         target_widget = root_window.winfo_containing(x, y)
-        if target_widget and hasattr(target_widget, 'handle_drop'):
-            # The payload is the dragging_widget itself
-            target_widget.handle_drop(state['dragging_widget'])
-        else:
-            print("Dropped outside any target zone.")
+        while target_widget:
+            print(f"trying drop on {target_widget}")
+            if hasattr(target_widget, 'handle_drop'):
+                # print(f"{target_widget} should handle drop")
+                target_widget.handle_drop(state['dragging_widget'])
+                break
+            elif hasattr(target_widget, 'master'):
+                # print(f"{target_widget} cannot handle drop")
+                target_widget = target_widget.master
+                # print(f"moving up the hierarchy to master = {target_widget}")                
+            elif hasattr(target_widget, 'winfo_parent'):
+                # print(f"{target_widget} cannot handle drop")
+                target_widget = target_widget.winfo_parent()
+                # print(f"moving up the hierarchy to parent = {target_widget}")
+            else:
+                # print(f"{target_widget} cannot handle drop and has no way to move up the hierarchy")
+                # print("break")
+                break
+        # if not target_widget: print("Dropped outside any target zone.")
         root_window.unbind("<B1-Motion>")
         root_window.unbind("<ButtonRelease-1>")
         state['dragging_widget'] = None
@@ -1180,10 +1194,10 @@ class ImageViewer(tk.Toplevel):
         self._update_title()
             
 class DirectoryThumbnailGrid(tk.Frame):
-    def __init__(self, master=None, directory_path="", item_width=None, item_border_width=None,
+    def __init__(self, master, directory_path="", item_width=None, item_border_width=None,
                  button_config_callback=None, **kwargs):
         super().__init__(master, class_="kubux-image-manager", **kwargs)
-
+        self.master = master
         self._item_border_width = item_border_width
         self._directory_path = directory_path
         self._item_width = item_width
@@ -1359,6 +1373,7 @@ class DirectoryThumbnailGrid(tk.Frame):
 class LongMenu(tk.Toplevel):
     def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None):
         super().__init__(master)
+        self.master = master
         self.overrideredirect(True) # Remove window decorations (title bar, borders)
         self.transient(master)      # Tie to master window
         # self.grab_set()             # Make it modal, redirect all input here
@@ -1608,8 +1623,7 @@ class BreadCrumNavigator(ttk.Frame):
 class ImagePicker(tk.Toplevel):
     def __init__(self, master, picker_info = None):
         super().__init__(master, class_="kubux-image-manager")
-
-        self._master = master
+        self.master = master
         self._thumbnail_width = picker_info[0]
         self._image_dir = picker_info[1]
         self.background_worker = BackgroundWorker( self._image_dir, self._thumbnail_width )
@@ -1641,8 +1655,8 @@ class ImagePicker(tk.Toplevel):
         self._gallery_grid.set_size_and_path(self._thumbnail_width, self._image_dir)
         self.update_idletasks()
 
-    def _handle_drop(self, source_button, target_button):
-        self.master.move_file_to_directory(source_button.img_path, target_button.path)
+    def _handle_drop(self, source_button, target_picker):
+        self.master.move_file_to_directory(source_button.img_path, target_picker._image_dir)
         
     def _create_widgets(self):
         # Thumbnail Display Area (Canvas and Scrollbar)
@@ -1685,14 +1699,13 @@ class ImagePicker(tk.Toplevel):
         self.breadcrumb_nav = BreadCrumNavigator(
             self._control_frame, # Parent is the _control_frame
             on_navigate_callback=self._browse_directory, # This callback will update the grid and breadcrumbs
-            font=self._master.main_font, # Use the app's font
+            font=self.master.main_font, # Use the app's font
         )
         self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
 
-
         # Right side: Clone and Close buttons, thumnail slider
-        tk.Button(self._control_frame, font=self._master.main_font, text="Close", relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
-        tk.Button(self._control_frame, font=self._master.main_font, text="Clone", relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
+        tk.Button(self._control_frame, font=self.master.main_font, text="Close", relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
+        tk.Button(self._control_frame, font=self.master.main_font, text="Clone", relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
 
         dummy_C_frame = tk.Frame(self._control_frame)
         dummy_C_frame.pack(side="right", expand=False, fill="x")
@@ -1710,6 +1723,8 @@ class ImagePicker(tk.Toplevel):
         self._browse_directory(self._image_dir)
         self._gallery_canvas.yview_moveto(0.0)
         self.after(100, self.focus_set)
+
+        bind_drop(self, self._handle_drop)
 
     def _adjust_gallery_scroll_position(self, old_scroll_fraction=0.0):
         bbox = self._gallery_canvas.bbox("all")
@@ -1773,7 +1788,7 @@ class ImagePicker(tk.Toplevel):
 
     def _browse_directory(self, path):
         if not os.path.isdir(path):
-            custom_message_dialog(parent=self, title="Error", message=f"Invalid directory: {path}", font=self._master.main_font)
+            custom_message_dialog(parent=self, title="Error", message=f"Invalid directory: {path}", font=self.master.main_font)
             return
         
         self._image_dir = path
