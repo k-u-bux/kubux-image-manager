@@ -263,7 +263,7 @@ class DirectoryEventHandler(FileSystemEventHandler):
         
     def on_any_event(self, event):
         # print(f"directory {self.directory} has changed.")
-        self.image_picker.after( 0, self.image_picker._repaint )
+        self.image_picker.after( 0, self.image_picker.master.broadcast_contents_change )
 
 
 class DirectoryWatcher():
@@ -273,13 +273,15 @@ class DirectoryWatcher():
     def start_watching(self, directory):
         self.event_handler = DirectoryEventHandler(directory, self.image_picker)
         self.observer = Observer()
+        self.observer.daemon = True
         self.observer.schedule(self.event_handler, directory, recursive=False)
         self.observer.start()
 
     def stop_watching(self):
         self.observer.stop()
         self.observer.join()
-
+        self.observer = None
+        
     def change_dir(self, directory):
         self.stop_watching()
         self.start_watching(directory)
@@ -598,6 +600,7 @@ class BackgroundWorker:
 
         self.worker = threading.Thread( target=self.background )
         self.block = threading.Event()
+        self.worker.daemon = True
         self.worker.start()
         
     def pause(self):
@@ -1204,21 +1207,22 @@ class DirectoryThumbnailGrid(tk.Frame):
         self._item_width = width
         return self.regrid()
 
-    def _get_button(self, img_path, width):
-        cache_key = uniq_file_id(img_path, width)
-        target_btn, tk_image = self._widget_cache.get(cache_key, (None, None))
-        
-        if target_btn is None:
-            target_btn = tk.Button(self, relief=BUTTON_RELIEF)
-            tk_image_ref = self._configure_button(target_btn, img_path)
-            assert not tk_image_ref is None
-            self._widget_cache[cache_key] = (target_btn, tk_image_ref)
-        else:
-            assert not tk_image is None
-            self._button_config_callback(target_btn, img_path, tk_image)
-            self._widget_cache.move_to_end(cache_key)
             
-        return target_btn, tk_image
+    def _get_button(self, img_path, width):
+       cache_key = uniq_file_id(img_path, width)
+       target_btn, tk_image = self._widget_cache.get(cache_key, (None, None))
+       
+       if target_btn is None:
+           target_btn = tk.Button(self, relief=BUTTON_RELIEF)
+           tk_image_ref = self._configure_button(target_btn, img_path)
+           assert not tk_image_ref is None
+           self._widget_cache[cache_key] = (target_btn, tk_image_ref)
+       else:
+           assert not tk_image is None
+           self._button_config_callback(target_btn, img_path, tk_image)
+           self._widget_cache.move_to_end(cache_key)
+           
+       return target_btn, tk_image
             
     def regrid(self):
         new_image_paths_from_disk = list_image_files(self._directory_path)
@@ -1637,11 +1641,14 @@ class ImagePicker(tk.Toplevel):
         self._gallery_grid.set_size_and_path(self._thumbnail_width, self._image_dir)
         self.update_idletasks()
 
+    def _handle_drop(self, source_button, target_button):
+        self.master.move_file_to_directory(source_button.img_path, target_button.path)
+        
     def _create_widgets(self):
         # Thumbnail Display Area (Canvas and Scrollbar)
         self._canvas_frame = ttk.Frame(self)
         self._canvas_frame.pack(fill="both", expand=True, padx=5, pady=5)
-
+        
         self._gallery_canvas = tk.Canvas(self._canvas_frame, bg=self.cget("background"))
         self._gallery_scrollbar = tk.Scrollbar(self._canvas_frame, relief=SCROLLBAR_RELIEF, orient="vertical", command=self._gallery_canvas.yview)
         self._gallery_canvas.config(yscrollcommand=self._gallery_scrollbar.set)
@@ -1933,6 +1940,7 @@ class ImageManager(tk.Tk):
         self.title("kubux image manager")
         self.configure(background=self.cget("background"))
         font_name, font_size = get_linux_system_ui_font_info()
+        self.repaint_job = None
         self.ui_scale = 1.0
         self._ui_scale_job = None
         self.base_font_size = font_size
@@ -2049,13 +2057,20 @@ class ImageManager(tk.Tk):
         self.update_button_status()
 
     def move_file_to_directory(self, file_path, target_dir):
-        print(f"move file {file_path} to directory {target_dir}")
-        new_path = move_file_to_directory(file_path, target_dir)
-        if new_path:
-            if file_path in self.selected_files:
-                self.selected_files.remove( file_path )
-                self.selected_files.append( new_path )
-                
+        if file_path in self.selected_files:
+            print(f"moving all selected files to directory {target_dir}")
+            dummy = self.selected_files
+            self.selected_files = []
+            new_list = []
+            for file in dummy:
+                new_path = move_file_to_directory(file, target_dir)
+                new_list.append( new_path )
+            # self.selected_files = new_list
+        else:
+            print(f"move file {file_path} to directory {target_dir}")
+            new_path = move_file_to_directory(file_path, target_dir)
+        self.broadcast_contents_change()
+        
     def sanitize_selected_files(self):
         self.selected_files[:] = [path for path in self.selected_files if os.path.exists(path)]
         
@@ -2094,14 +2109,21 @@ class ImageManager(tk.Tk):
         self.execute_command_with_args(self.command_field.current_command(), args)
         
     def broadcast_selection_change(self):
-        for picker in self.open_picker_dialogs:
-            picker._repaint()
+        if self.repaint_job:
+            self.after_cancel(self.repaint_job)
+        self.repaint_job = self.after(50, self.repaint_open_pickers)
 
     def broadcast_contents_change(self):
+        if self.repaint_job:
+            self.after_cancel(self.repaint_job)
+        self.repaint_job= self.after(50, self.repaint_open_pickers)
+
+    def repaint_open_pickers(self):
+        self.repaint_job = None
         for picker in self.open_picker_dialogs:
-            # print(f"alerting image picker for directory {picker.get_picker_info()[1]}")
             picker._repaint()
-        
+        self.update_button_status()
+            
     def select_file(self, path):
         print(f"selecting {path}")
         self.selected_files.append(path)
@@ -2131,7 +2153,6 @@ class ImageManager(tk.Tk):
         print(f"clearing selection")
         self.selected_files = []
         self.broadcast_selection_change()
-        self.update_button_status()
         
     def toggle_selection(self, file):
         if file in self.selected_files:
