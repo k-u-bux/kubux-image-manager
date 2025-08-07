@@ -188,6 +188,28 @@ def get_linux_ui_font():
 
 # --- file ops ---
 
+def is_file_in_dir(file_path, dir_path):
+    file_path = os.path.realpath(file_path)
+    dir_path = os.path.realpath(dir_path)
+    return file_path.startswith(dir_path + os.sep)
+
+def execute_shell_command(command):
+    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    print(f"return code = {result.returncode}")
+    print(f"stdout = {result.stdout}")
+    print(f"stderr = {result.stderr}")
+    return result
+
+
+def filter_for_files_in_directory(command):
+    line_list = execute_shell_command(command).stdout.splitlines()
+    return [file for file in line_list if (os.path.isfile(file) and is_file_in_dir(file, directory))]
+        
+def filter_for_files(command, directory):
+    line_list = execute_shell_command(command).stdout.splitlines()
+    return [file for file in line_list if os.path.isfile(file)]
+        
+    
 def move_file_to_directory(file_path, target_dir_path):
     """
     Moves a file or symbolic link to a new directory, preserving symlink validity.
@@ -729,6 +751,88 @@ def bind_click_or_drag(source_widget, make_ghost, click_handler):
     source_widget.bind("<Button-1>", on_press)
     source_widget.bind("<B1-Motion>", on_motion)
     source_widget.bind("<ButtonRelease-1>", on_release)
+
+    
+def bind_right_drop(target_widget, handle_right_drop):
+    def wrapper(self, source_widget):
+        handle_right_drop(source_widget, target_widget)
+    target_widget.handle_right_drop = types.MethodType(wrapper, target_widget)
+
+def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler):
+    # todo: why are we using a dict here ?
+    state = {
+        'drag_start_timer': None,
+        'ghost': None,
+        'drag_start_x': 0,
+        'drag_start_y': 0,
+        'dragging_widget': None
+    }
+    root_window = source_widget.winfo_toplevel()
+    
+    def start_drag():
+        # print(f"start draggin in root {root_window} with state {state}")
+        state['drag_start_timer'] = None
+        state['ghost'] = make_ghost(state['dragging_widget'], state['drag_start_x'], state['drag_start_y'])
+        root_window.bind("<B3-Motion>", do_drag)
+        root_window.bind("<ButtonRelease-3>", end_drag)
+
+    def do_drag(event):
+        # print(f"moving to {event.x_root}+{event.y_root}")
+        state['ghost'].geometry(f"+{event.x_root - 10}+{event.y_root - 10}")
+
+    def end_drag(event):
+        # print(f"dropping at {event.x_root}+{event.y_root}")
+        x, y = event.x_root, event.y_root
+        state['ghost'].destroy()
+        state['ghost'] = None
+        target_widget = root_window.winfo_containing(x, y)
+        while target_widget:
+            # print(f"trying drop on {target_widget}")
+            if hasattr(target_widget, 'handle_right_drop'):
+                # print(f"{target_widget} should handle drop")
+                target_widget.handle_right_drop(state['dragging_widget'])
+                break
+            elif hasattr(target_widget, 'master'):
+                # print(f"{target_widget} cannot handle drop")
+                target_widget = target_widget.master
+                # print(f"moving up the hierarchy to master = {target_widget}")                
+            elif hasattr(target_widget, 'winfo_parent'):
+                # print(f"{target_widget} cannot handle drop")
+                target_widget = target_widget.winfo_parent().nametowidget()
+                # print(f"moving up the hierarchy to parent = {target_widget}")
+            else:
+                # print(f"{target_widget} cannot handle drop and has no way to move up the hierarchy")
+                # print("break")
+                break
+        # if not target_widget: print("Dropped outside any target zone.")
+        root_window.unbind("<B3-Motion>")
+        root_window.unbind("<ButtonRelease-3>")
+        state['dragging_widget'] = None
+        
+    def on_press(event):
+        state['drag_start_x'] = event.x_root
+        state['drag_start_y'] = event.y_root
+        state['dragging_widget'] = event.widget
+        state['drag_start_timer'] = root_window.after(DRAG_DELAY_MS, start_drag)
+        
+    def on_motion(event):
+        if state['drag_start_timer'] and state['dragging_widget']:
+            distance_moved = ((event.x_root - state['drag_start_x'])**2 + (event.y_root - state['drag_start_y'])**2)**0.5
+            if distance_moved > DRAG_THRESHOLD:
+                root_window.after_cancel(state['drag_start_timer'])
+                state['drag_start_timer'] = None
+                start_drag()
+
+    def on_release(event):
+        if state['drag_start_timer']:
+            root_window.after_cancel(state['drag_start_timer'])
+            state['drag_start_timer'] = None
+            click_handler(event.widget)
+            state['dragging_widget'] = None
+
+    source_widget.bind("<Button-3>", on_press)
+    source_widget.bind("<B3-Motion>", on_motion)
+    source_widget.bind("<ButtonRelease-3>", on_release)
 
     
 # --- widgets ---
@@ -1530,14 +1634,14 @@ class BreadCrumNavigator(ttk.Frame):
         dummy_frame = tk.Frame(self)
         dummy_frame.pack(side="right", fill="x", expand=True)
         for i, btn in enumerate( reversed(btn_list) ):
-            bind_drop( btn, self._handle_drop)
+            bind_right_drop( btn, self._handle_right_drop)
             btn.pack(side="right")
             if i + 1< len(btn_list):
                 ttk.Label(self, text="/").pack(side="right")
             if i == 0:
                 btn.bind("<ButtonPress-1>", self._on_button_press_menu)
 
-    def _handle_drop(self, source_button, target_button):
+    def _handle_right_drop(self, source_button, target_button):
         self.master.master.master.move_file_to_directory(source_button.img_path, target_button.path)
         
     def _trigger_navigate(self, path):
@@ -1655,7 +1759,7 @@ class ImagePicker(tk.Toplevel):
         self._gallery_grid.set_size_and_path(self._thumbnail_width, self._image_dir)
         self.update_idletasks()
 
-    def _handle_drop(self, source_button, target_picker):
+    def _handle_right_drop(self, source_button, target_picker):
         self.master.move_file_to_directory(source_button.img_path, target_picker._image_dir)
         
     def _create_widgets(self):
@@ -1724,7 +1828,7 @@ class ImagePicker(tk.Toplevel):
         self._gallery_canvas.yview_moveto(0.0)
         self.after(100, self.focus_set)
 
-        bind_drop(self, self._handle_drop)
+        bind_right_drop(self, self._handle_right_drop)
 
     def _adjust_gallery_scroll_position(self, old_scroll_fraction=0.0):
         bbox = self._gallery_canvas.bbox("all")
@@ -1772,8 +1876,10 @@ class ImagePicker(tk.Toplevel):
             bg=self.cget("background")
         )
         # btn.bind("<Button-1>", self._toggle_selection)
-        bind_click_or_drag(btn, self._make_ghost, self._toggle_selection)
-        btn.bind("<Button-3>", self._exec_cmd_for_image)
+        # bind_click_or_drag(btn, self._make_ghost, self._toggle_selection)
+        # btn.bind("<Button-3>", self._exec_cmd_for_image)
+        btn.bind("<Button-1>",  self._toggle_selection)
+        bind_right_click_or_drag(btn, self._make_ghost, self._exec_cmd_for_image)
         
         if img_path in self.master.selected_files:
             btn.config(highlightbackground="blue")
@@ -1900,6 +2006,13 @@ class FlexibleTextField(tk.Frame):
         if command:
             self.command_callback(command)
 
+
+# --- string ops ---
+
+def strip_prefix(prefix, string):
+    if string.startswith(prefix):
+        return string[ len(prefix) : ].strip()
+    return None
             
 def expand_env_vars(input_string: str) -> str:
     # Regex to find patterns like ${VAR_NAME}.
@@ -2072,18 +2185,11 @@ class ImageManager(tk.Tk):
         self.update_button_status()
 
     def move_file_to_directory(self, file_path, target_dir):
+        print(f"move file {file_path} to directory {target_dir}")
+        new_path = move_file_to_directory(file_path, target_dir)
         if file_path in self.selected_files:
-            print(f"moving all selected files to directory {target_dir}")
-            dummy = self.selected_files
-            self.selected_files = []
-            new_list = []
-            for file in dummy:
-                new_path = move_file_to_directory(file, target_dir)
-                new_list.append( new_path )
-            # self.selected_files = new_list
-        else:
-            print(f"move file {file_path} to directory {target_dir}")
-            new_path = move_file_to_directory(file_path, target_dir)
+            self.unselect_file(file_path)
+            self.select_file(new_path)
         self.broadcast_contents_change()
         
     def sanitize_selected_files(self):
@@ -2096,23 +2202,29 @@ class ImageManager(tk.Tk):
         to_do = expand_wildcards( command, args )
         for cmd in to_do:
             print(f"executing {cmd}")
-            if cmd.startswith("Open"):
-                print(f"execute as an internal command: {cmd}")
-                path_list = shlex.split( cmd )
-                del path_list[0]
+            if  ( files := strip_prefix("Open:", cmd) ) is not None:
+                print(f"execute as an internal command: Open: {files}")
+                path_list = shlex.split( files )
                 for path in path_list:
                     self.open_path(path)
-            elif cmd.startswith("SetWP"):
-                print(f"execute as an internal command: {cmd}")
-                path_list = shlex.split( cmd )
-                del path_list[0]
+            elif ( files := strip_prefix("SetWP:", cmd) ) is not None:
+                print(f"execute as an internal command: SetWP: {files}")
+                path_list = shlex.split( files )
                 if path_list:
                     self.set_wp(path_list[-1])
+            elif ( list_cmd := strip_prefix("Select:", cmd) ) is not None:
+                file_list = filter_for_files(list_cmd)
+                for file in file_list: self.select_file(file)
+            elif ( list_cmd := strip_prefix("Deselect:", cmd) ) is not None:
+                file_list = filter_for_files(list_cmd)
+                for file in file_list: self.unselect_file(file)
             else:
                 print(f"execute as a shell command: {cmd}")
-                self.execute_shell_command(cmd)
+                execute_shell_command(cmd)
                 self.broadcast_contents_change()
-
+        self.sanitize_selected_files()
+        self.broadcast_selection_change()
+        
     def execute_command(self, command):
         self.execute_command_with_args( command, self.selected_files)
                 
@@ -2146,7 +2258,9 @@ class ImageManager(tk.Tk):
         
     def unselect_file(self, path):
         print(f"unselecting {path}")
-        self.selected_files.remove(path)
+        try:
+            self.selected_files.remove(path)
+        except Exception: pass
         self.broadcast_selection_change()
         
     def _do_update_ui_scale(self, scale_factor):
@@ -2217,12 +2331,6 @@ class ImageManager(tk.Tk):
         except Exception as e:
             print(f"path {path} has problems, message: {e}")
                 
-    def execute_shell_command(self, command):
-        result = subprocess.run(command, shell=True)
-        print(f"return code = {result.returncode}")
-        print(f"stdout = {result.stdout}")
-        print(f"stderr = {result.stderr}")
-        
         
 if __name__ == "__main__":
     app = ImageManager()
