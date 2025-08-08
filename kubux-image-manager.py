@@ -1864,6 +1864,21 @@ class ImagePicker(tk.Toplevel):
         self._gallery_canvas.yview_moveto(new_scroll_fraction)
         
     def _make_ghost(self, button, x, y):
+        dir = os.path.dirname(button.img_path)
+        files = self.master.selected_files_in_directory(dir)
+        ghost = tk.Toplevel(self.master)
+        ghost.overrideredirect(True)
+        ghost.attributes('-alpha', 0.7)
+        if files:
+            ghost_label = ttk.Label(ghost, text=f"{len(files)} files from directory {dir} selected", wraplength=300)
+            # bg=button['bg'], relief=button['relief'], padx=10, pady=5)
+        else:
+            ghost_label = ttk.Label(ghost, text=f"NO FILES SELECTED in {dir}", wraplength=300)            
+        ghost_label.pack()
+        ghost.geometry(f"+{x - 10}+{y - 10}")
+        return ghost
+    
+    def _make_right_ghost(self, button, x, y):
         ghost = tk.Toplevel(self.master)
         ghost.overrideredirect(True)
         ghost.attributes('-alpha', 0.7)
@@ -1886,7 +1901,7 @@ class ImagePicker(tk.Toplevel):
             bg=self.cget("background")
         )
         bind_click_or_drag(btn, self._make_ghost, self._toggle_selection)
-        bind_right_click_or_drag(btn, self._make_ghost, self._exec_cmd_for_image)
+        bind_right_click_or_drag(btn, self._make_right_ghost, self._exec_cmd_for_image)
         
         if img_path in self.master.selected_files:
             btn.config(highlightbackground="blue")
@@ -2198,10 +2213,13 @@ class ImageManager(tk.Tk):
             self.unselect_file(file_path)
             self.select_file(new_path)
         self.broadcast_contents_change()
+
+    def selected_files_in_directory(self, directory):
+        return [file for file in self.selected_files if is_file_in_dir(file, directory)]
         
     def move_selected_files_to_directory(self, file_path, target_dir):
         source_dir = os.path.realpath(os.path.dirname(file_path))
-        print(f"move sselected files from {source_dir} to directory {target_dir}")
+        print(f"move selected files from {source_dir} to directory {target_dir}")
         old_selected = self.selected_files
         self.selected_files = []
         for file in old_selected:
