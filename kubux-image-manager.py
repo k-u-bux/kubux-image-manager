@@ -2252,12 +2252,9 @@ class ImageManager(tk.Tk):
                 file_list = filter_for_files(list_cmd)
                 for file in file_list: self.unselect_file(file)
             else:
-                status_change = True
                 print(f"execute as a shell command: {cmd}")
                 execute_shell_command(cmd)
-                self.broadcast_contents_change()
         if status_change:
-            self.sanitize_selected_files()
             self.broadcast_selection_change()
         
     def execute_command(self, command):
@@ -2271,11 +2268,13 @@ class ImageManager(tk.Tk):
         self.execute_command_with_args(self.command_field.current_command(), args)
         
     def broadcast_selection_change(self):
+        self.sanitize_selected_files()
         if self.repaint_job:
             self.after_cancel(self.repaint_job)
         self.repaint_job = self.after(50, self.repaint_open_pickers)
 
     def broadcast_contents_change(self):
+        self.sanitize_selected_files()
         if self.repaint_job:
             self.after_cancel(self.repaint_job)
         self.repaint_job= self.after(50, self.repaint_open_pickers)
