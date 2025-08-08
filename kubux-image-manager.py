@@ -938,8 +938,9 @@ class EditableLabelWithCopy(tk.Frame):
         self.entry.focus_set()
         
     def _on_leave(self, event=None):
-        self.entry.config(takefocus=0, state=tk.DISABLED)
-        
+        self.entry.config(takefocus=0)
+        self.master.focus_set()
+
     def _on_enter_pressed(self, event=None):
         self._rename()
         
@@ -1523,6 +1524,7 @@ class DirectoryThumbnailGrid(tk.Frame):
 class LongMenu(tk.Toplevel):
     def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None):
         super().__init__(master)
+        self.withdraw()
         self.master = master
         self.overrideredirect(True) # Remove window decorations (title bar, borders)
         self.transient(master)      # Tie to master window
@@ -1552,17 +1554,13 @@ class LongMenu(tk.Toplevel):
         for option_name in other_options:
             self._listbox.insert(tk.END, option_name)
 
-        # --- Bindings ---
         self._listbox.bind("<<ListboxSelect>>", self._on_listbox_select)
         self._listbox.bind("<Double-Button-1>", self._on_double_click) # Double-click to select and close
         self.bind("<Return>", self._on_return_key) # Enter key to select and close
         self.bind("<Escape>", self._cancel) # Close on Escape key
         self.bind("<FocusOut>", self._on_focus_out)
         
-        # --- Positioning and Focus ---
         self.update_idletasks()
-        self.grab_set() 
-
         if x_pos is None or y_pos is None:
             master_x = master.winfo_x()
             master_y = master.winfo_y()
@@ -1582,6 +1580,8 @@ class LongMenu(tk.Toplevel):
             y_pos = screen_height - popup_h - 5 # 5 pixels margin
             
         self.geometry(f"+{int(x_pos)}+{int(y_pos)}")        # Center the window relative to its master
+        self.deiconify()
+        self.grab_set() 
 
         self._listbox.focus_set() # Set focus to the _listbox for immediate keyboard navigation
         self.wait_window(self) # Make the dialog modal until it's destroyed
@@ -1810,6 +1810,7 @@ class ImagePicker(tk.Toplevel):
 
     def _update_list_cmd(self, event):
         self._list_cmd = event.widget.get()
+        prepend_or_move_to_front(self._list_cmd, self.master.list_commands)
         self._repaint()
         
     def _show_list_cmd_menu(self, event):
@@ -1856,6 +1857,7 @@ class ImagePicker(tk.Toplevel):
             self.list_cmd_entry.pack(side="right")
             self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
             self.list_cmd_entry.bind("<Button-3>", self._show_list_cmd_menu)
+            self.list_cmd_entry.bind("<Leave>", lambda event: self.focus_set())
             # Breadcrumb Frame
             self.breadcrumb_nav = BreadCrumNavigator(
                 self._top_frame, # Parent is the _control_frame
@@ -2231,7 +2233,7 @@ class ImageManager(tk.Tk):
 
         self.ui_scale = self.app_settings.get("ui_scale", 1.0)
         self.main_win_geometry = self.app_settings.get("main_win_geometry", "300x400")
-        self.commands = self.app_settings.get("commands", "Open {*}\nSetWP *\nOpen ${HOME}/Pictures\necho {*} >> /tmp/files")
+        self.commands = self.app_settings.get("commands", "Open: {*}\nSetWP: *\nOpen: ${HOME}/Pictures\necho {*} >> /tmp/files")
         self.current_index = self.app_settings.get("current_index", 1)
         self.selected_files = self.app_settings.get("selected_files", [])
         self.new_picker_info = self.app_settings.get("new_picker_info", [ 192, PICTURES_DIR, "ls", "1000x600" ])
