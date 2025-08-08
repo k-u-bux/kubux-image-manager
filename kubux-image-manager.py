@@ -60,7 +60,7 @@ DEFAULT_THUMBNAIL_DIM = 192
 APP_SETTINGS_FILE = os.path.join(CONFIG_DIR, "app_settings.json")    
 
 os.makedirs(THUMBNAIL_CACHE_ROOT, exist_ok=True)
-
+os.makedirs(CONFIG_DIR, exist_ok=True)
 
 # --- probe font ---
 
@@ -1836,8 +1836,8 @@ class ImagePicker(tk.Toplevel):
             widget.insert(0, selected_cmd)
         
     def _repaint(self):
-        self._gallery_grid.set_size_path_and_command(self._thumbnail_width, self._image_dir, self._list_cmd)
         self.update_idletasks()
+        self._gallery_grid.set_size_path_and_command(self._thumbnail_width, self._image_dir, self._list_cmd)
 
     def _handle_drop(self, source_button, target_picker):
         self.master.move_selected_files_to_directory(source_button.img_path, target_picker._image_dir)
