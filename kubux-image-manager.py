@@ -1237,6 +1237,7 @@ class DirectoryThumbnailGrid(tk.Frame):
         self._cache_size = 2000
         self._active_widgets = {} # This is a dict: img_path -> (tk.Button, ImageTk.PhotoImage)
         self._last_known_width = -1
+        self._files = []
         self.pack_propagate(True)
         self.grid_propagate(True)    
         self.bind("<Configure>", self._on_resize)
@@ -1271,21 +1272,19 @@ class DirectoryThumbnailGrid(tk.Frame):
        return target_btn, tk_image
 
     def regrid(self):
-        new_image_paths_from_disk = list_image_files_by_command(self._directory_path, self._list_cmd)
-        print(f"{new_image_paths_from_disk}")
-        
+        self._files = list_image_files_by_command(self._directory_path, self._list_cmd)
+        print(f"picker contains: {self._files}")
+        return self.redraw()
+
+    def redraw(self):
         for btn, _ in self._active_widgets.values():
             assert btn is not None
             assert btn.winfo_exists()
             btn.grid_forget()
-
         self._active_widgets = {}
-
-        # Create/reuse and configure buttons for the new set of image paths
-        for img_path in new_image_paths_from_disk:
+        for img_path in self._files:
             target_btn, tk_image = self._get_button(img_path, self._item_width)
             self._active_widgets[img_path] = (target_btn, tk_image)
-            
         return self._layout_the_grid()
 
     def _on_resize(self, event=None):
@@ -1686,7 +1685,7 @@ class ImagePicker(tk.Toplevel):
     def _update_list_cmd(self, event):
         self._list_cmd = event.widget.get()
         prepend_or_move_to_front(self._list_cmd, self.master.list_commands)
-        self.after( 0, self._repaint() )
+        self.after( 0, self._regrid() )
         
     def _show_list_cmd_menu(self, event):
         widget = event.widget
@@ -1713,10 +1712,14 @@ class ImagePicker(tk.Toplevel):
             widget.insert(0, selected_cmd)
             self._update_list_cmd(event)
 
-    def _repaint(self):
+    def _regrid(self):
         self.update_idletasks()
         self._gallery_grid.set_size_path_and_command(self._thumbnail_width, self._image_dir, self._list_cmd)
 
+    def _redraw(self):
+        self.update_idletasks()
+        self._gallery_grid.redraw()
+       
     def _handle_drop(self, source_button, target_picker):
         self.master.move_selected_files_to_directory(source_button.img_path, target_picker._image_dir)
         
@@ -1911,7 +1914,7 @@ class ImagePicker(tk.Toplevel):
             
         self.breadcrumb_nav.set_path(path)
         self.update_idletasks()
-        self._repaint()
+        self._regrid()
         self._adjust_gallery_scroll_position()
 
     def _toggle_selection(self, button):
@@ -1931,7 +1934,7 @@ class ImagePicker(tk.Toplevel):
         
     def _do_update_thumbnail_width(self, value):
         self._thumbnail_width = value
-        self._repaint()
+        self._regrid()
         
     def _bind_mousewheel(self, widget):
         widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
@@ -2076,7 +2079,8 @@ class ImageManager(tk.Tk):
         self.title("kubux image manager")
         self.configure(background=self.cget("background"))
         font_name, font_size = get_linux_system_ui_font_info()
-        self.repaint_job = None
+        self.regrid_job = None
+        self.redraw_job = None
         self._ui_scale_job = None
         self.base_font_size = font_size
         self.main_font = tkFont.Font(family=font_name, size=int(self.base_font_size * self.ui_scale))
@@ -2272,20 +2276,26 @@ class ImageManager(tk.Tk):
         
     def broadcast_selection_change(self):
         self.sanitize_selected_files()
-        if self.repaint_job:
-            self.after_cancel(self.repaint_job)
-        self.repaint_job = self.after(50, self.repaint_open_pickers)
+        if self.redraw_job:
+            self.after_cancel(self.redraw_job)
+        self.redraw_job = self.after(50, self.redraw_open_pickers)
 
     def broadcast_contents_change(self):
         self.sanitize_selected_files()
-        if self.repaint_job:
-            self.after_cancel(self.repaint_job)
-        self.repaint_job= self.after(50, self.repaint_open_pickers)
+        if self.regrid_job:
+            self.after_cancel(self.regrid_job)
+        self.regrid_job= self.after(50, self.regrid_open_pickers)
 
-    def repaint_open_pickers(self):
-        self.repaint_job = None
+    def redraw_open_pickers(self):
+        self.redraw_job = None
         for picker in self.open_picker_dialogs:
-            picker._repaint()
+            picker._redraw()
+        self.update_button_status()
+            
+    def regrid_open_pickers(self):
+        self.regrid_job = None
+        for picker in self.open_picker_dialogs:
+            picker._regrid()
         self.update_button_status()
             
     def select_file(self, path):
