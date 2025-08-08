@@ -201,11 +201,12 @@ def execute_shell_command(command):
     return result
 
 
-def filter_for_files_in_directory(command):
-    line_list = execute_shell_command(command).stdout.splitlines()
+def filter_for_files_in_directory(command, directory):
+    result = subprocess.run(command, cwd=directory, shell=True, capture_output=True, text=True)
+    line_list = result.stdout.splitlines()
     return [file for file in line_list if (os.path.isfile(file) and is_file_in_dir(file, directory))]
         
-def filter_for_files(command, directory):
+def filter_for_files(command):
     line_list = execute_shell_command(command).stdout.splitlines()
     return [file for file in line_list if os.path.isfile(file)]
         
