@@ -1113,6 +1113,8 @@ class ImageViewer(tk.Toplevel):
         elif key == '0':  # Reset zoom
             self.fit_to_window = True
             self._update_image()
+        elif key == 'f': # Toggle fullscreen
+            self.toggle_fullscreen()
     
     def _on_mouse_down(self, event):
         self.panning = True
