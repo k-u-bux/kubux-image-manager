@@ -1802,15 +1802,18 @@ class ImagePicker(tk.Toplevel):
             )
             self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
             # Right side: Clone and Close buttons, thumnail slider
-            tk.Button(self._top_frame, font=self.master.main_font, text="Close", relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
-            tk.Button(self._top_frame, font=self.master.main_font, text="Clone", relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
+            tk.Button(self._top_frame, font=self.master.main_font, text="Close", 
+                      relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
+            tk.Button(self._top_frame, font=self.master.main_font, text="Clone", 
+                      relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
         
         # Thumbnail Display Area (Canvas and Scrollbar)
         self._canvas_frame = ttk.Frame(self)
         self._canvas_frame.pack(fill="both", expand=True, padx=5, pady=5)
         if True:
             self._gallery_canvas = tk.Canvas(self._canvas_frame, bg=self.cget("background"))
-            self._gallery_scrollbar = tk.Scrollbar(self._canvas_frame, relief=SCROLLBAR_RELIEF, orient="vertical", command=self._gallery_canvas.yview)
+            self._gallery_scrollbar = tk.Scrollbar(self._canvas_frame, relief=SCROLLBAR_RELIEF, 
+                                                   orient="vertical", command=self._gallery_canvas.yview)
             self._gallery_canvas.config(yscrollcommand=self._gallery_scrollbar.set)
             
             self._gallery_scrollbar.pack(side="right", fill="y")
