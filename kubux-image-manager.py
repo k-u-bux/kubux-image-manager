@@ -185,6 +185,11 @@ def get_linux_ui_font():
     font_name, font_size = get_linux_ui_font_info()
     return tkFont.Font(family=font_name, size=font_size)
     
+# --- list ops ---
+
+def remove_falsy(the_list):
+    the_list = [entry for entry in the_list if entry]
+
 
 # --- file ops ---
 
