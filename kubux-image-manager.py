@@ -1467,7 +1467,7 @@ class DirectoryThumbnailGrid(tk.Frame):
 
 
 class LongMenu(tk.Toplevel):
-    def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None):
+    def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None, pos="bottom"):
         super().__init__(master)
         self.withdraw()
         self.overrideredirect(True) # Remove window decorations (title bar, borders)
@@ -1477,7 +1477,7 @@ class LongMenu(tk.Toplevel):
         self.result = default_option
         self._options = other_options
 
-        self._main_font = font if font else ("TkDefaultFont", 12, "normal")
+        self._main_font = font if font else get_root(self).main_font
 
         self._listbox_frame = ttk.Frame(self)
         self._listbox_frame.pack(padx=10, pady=10, fill="both", expand=True)
@@ -1485,8 +1485,8 @@ class LongMenu(tk.Toplevel):
         self._listbox = tk.Listbox(
             self._listbox_frame,
             selectmode=tk.SINGLE,
-            font=self._main_font,
-            height=15
+            font=self._main_font
+            # height=15
         )
         self._listbox.pack(side="left", fill="both", expand=True)
 
@@ -1505,12 +1505,19 @@ class LongMenu(tk.Toplevel):
         self.bind("<FocusOut>", self._on_focus_out)
         
         self.update_idletasks()
+        master_h = master.winfo_height()
         if x_pos is None or y_pos is None:
             master_x = master.winfo_x()
             master_y = master.winfo_y()
-            master_h = master.winfo_height()
             x_pos = master_x
             y_pos = master_y + master_h
+        
+        if pos == "top":
+            y_pos = y_pos - self._listbox.winfo_reqheight()
+        elif pos == "center":
+            y_pos = y_pos - int(0.5 * self._listbox.winfo_reqheight())
+        if y_pos < 0: 
+            y_pos = 0
 
         screen_width = self.winfo_screenwidth()
         popup_w = self.winfo_width()
@@ -1753,14 +1760,15 @@ class ImagePicker(tk.Toplevel):
         widget_y = widget.winfo_rooty()
         widget_height = widget.winfo_height()
         menu_x = widget_x
-        menu_y = widget_y + widget_height
+        menu_y = widget_y# + widget_height
         selector_dialog = LongMenu(
             self,
             None,
             self.master.list_commands,
             font=self.master.main_font,
             x_pos=menu_x,
-            y_pos=menu_y
+            y_pos=menu_y,
+            pos="center"
         )
         selected_cmd = selector_dialog.result
         if selected_cmd:
@@ -1849,6 +1857,8 @@ class ImagePicker(tk.Toplevel):
             self.list_cmd_entry.pack(side="left", fill="x", expand=True, padx=(0,12))
             self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
             self.list_cmd_entry.bind("<Button-3>", self._show_list_cmd_menu)
+            # self.list_cmd_entry.bind("<Up>", self._show_list_cmd_menu)
+            # self.list_cmd_entry.bind("<Down>", self._show_list_cmd_menu)
             self.list_cmd_entry.bind("<Leave>", lambda event: self.focus_set())
             # Select and Deselect All buttons (right)
             tk.Button(self._bot_frame, font=self.master.main_font, text="Sel. All", relief=BUTTON_RELIEF, command=self._on_select).pack(side="right", padx=(24, 2))
