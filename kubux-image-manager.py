@@ -1467,7 +1467,7 @@ class DirectoryThumbnailGrid(tk.Frame):
 
 
 class LongMenu(tk.Toplevel):
-    def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None, pos="bottom"):
+    def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None, pos="bottom", n_lines=12):
         super().__init__(master)
         self.withdraw()
         self.overrideredirect(True) # Remove window decorations (title bar, borders)
@@ -1485,8 +1485,8 @@ class LongMenu(tk.Toplevel):
         self._listbox = tk.Listbox(
             self._listbox_frame,
             selectmode=tk.SINGLE,
-            font=self._main_font
-            # height=15
+            font=self._main_font,
+            height=n_lines
         )
         self._listbox.pack(side="left", fill="both", expand=True)
 
@@ -1607,6 +1607,7 @@ class BreadCrumNavigator(ttk.Frame):
             btn.path = path
             btn.bind("<ButtonPress-1>", self._on_button_press)
             btn.bind("<ButtonRelease-1>", self._on_button_release)
+            btn.bind("<ButtonPress-3>", self._on_button_press_menu)
             btn.bind("<Motion>", self._on_button_motion)
             btn_list.insert( 0, btn )
 
@@ -1615,6 +1616,7 @@ class BreadCrumNavigator(ttk.Frame):
         btn.path = current_display_path
         btn.bind("<ButtonPress-1>", self._on_button_press)
         btn.bind("<ButtonRelease-1>", self._on_button_release)
+        btn.bind("<ButtonPress-3>", self._on_button_press_menu)
         btn.bind("<Motion>", self._on_button_motion)
         btn_list.insert( 0, btn )
 
@@ -1706,7 +1708,8 @@ class BreadCrumNavigator(ttk.Frame):
                 sorted_subdirs,
                 font=get_to_root(self).main_font,
                 x_pos=menu_x,
-                y_pos=menu_y
+                y_pos=menu_y,
+                n_lines = 15
             )
             selected_name = selector_dialog.result
             if selected_name:
@@ -1749,7 +1752,7 @@ class ImagePicker(tk.Toplevel):
     def _update_list_cmd(self, event):
         self._list_cmd = event.widget.get()
         prepend_or_move_to_front(self._list_cmd, self.master.list_commands)
-        self._repaint()
+        self.after( 0, self._repaint() )
         
     def _show_list_cmd_menu(self, event):
         widget = event.widget
@@ -1774,7 +1777,8 @@ class ImagePicker(tk.Toplevel):
         if selected_cmd:
             widget.delete(0, len(widget.get()))
             widget.insert(0, selected_cmd)
-        
+            self._update_list_cmd(event)
+
     def _repaint(self):
         self.update_idletasks()
         self._gallery_grid.set_size_path_and_command(self._thumbnail_width, self._image_dir, self._list_cmd)
@@ -1857,8 +1861,7 @@ class ImagePicker(tk.Toplevel):
             self.list_cmd_entry.pack(side="left", fill="x", expand=True, padx=(0,12))
             self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
             self.list_cmd_entry.bind("<Button-3>", self._show_list_cmd_menu)
-            # self.list_cmd_entry.bind("<Up>", self._show_list_cmd_menu)
-            # self.list_cmd_entry.bind("<Down>", self._show_list_cmd_menu)
+            # self.list_cmd_entry.bind("<Shift-Return>", self._show_list_cmd_menu)
             self.list_cmd_entry.bind("<Leave>", lambda event: self.focus_set())
             # Select and Deselect All buttons (right)
             tk.Button(self._bot_frame, font=self.master.main_font, text="Sel. All", relief=BUTTON_RELIEF, command=self._on_select).pack(side="right", padx=(24, 2))
