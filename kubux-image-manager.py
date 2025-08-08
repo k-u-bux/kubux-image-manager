@@ -1049,7 +1049,6 @@ class ImageViewer(tk.Toplevel):
         return self.image_path, self._geometry
         
     def toggle_fullscreen(self):
-        """Toggle fullscreen mode."""
         self.is_fullscreen = not self.is_fullscreen
         self.attributes('-fullscreen', self.is_fullscreen)
         self.update_idletasks()
@@ -1066,51 +1065,39 @@ class ImageViewer(tk.Toplevel):
         self.title(title)
         
     def _update_image(self):
-        """Update the displayed image based on current zoom and size."""
         if not self.original_image:
             return
-                
-        # Get current canvas size
+
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
         
-        # Use default size if canvas size not available yet
         if canvas_width <= 1:
             canvas_width = 800
         if canvas_height <= 1:
             canvas_height = 600
                 
-        # Get original image dimensions
         orig_width, orig_height = self.original_image.size
         
-        # Calculate dimensions based on fit mode or zoom
         if self.fit_to_window:
-            # Calculate scale to fit the window
             scale_width = canvas_width / orig_width
             scale_height = canvas_height / orig_height
             scale = min(scale_width, scale_height)
             self.zoom_factor = scale
-            
-            # Apply the scale
             new_width = int(orig_width * scale)
             new_height = int(orig_height * scale)
         else:
-            # Apply the current zoom factor
             new_width = int(orig_width * self.zoom_factor)
             new_height = int(orig_height * self.zoom_factor)
         
-        # Resize image
         self.display_image = self.original_image.resize(
             (new_width, new_height), 
             Image.LANCZOS
         )
         self.photo_image = ImageTk.PhotoImage(self.display_image)
         
-        # Calculate the offset to center the image
         x_offset = max(0, (canvas_width - new_width) // 2)
         y_offset = max(0, (canvas_height - new_height) // 2)
         
-        # Update canvas with new image
         self.canvas.delete("all")
         self.image_id = self.canvas.create_image(
             x_offset, y_offset, 
@@ -1118,26 +1105,17 @@ class ImageViewer(tk.Toplevel):
             image=self.photo_image
         )
         
-        # Set the scroll region - determine if scrolling is needed
         if new_width > canvas_width or new_height > canvas_height:
-            # Image is larger than canvas, set scroll region to image size
             self.canvas.config(scrollregion=(0, 0, new_width, new_height))
-            
-            # When image is larger than canvas, we don't need the offset
-            # We'll reposition the image at the origin for proper scrolling
             self.canvas.coords(self.image_id, 0, 0)
         else:
-            # Image fits within canvas, include the offset in the scroll region
             self.canvas.config(scrollregion=(0, 0, 
                                             max(canvas_width, x_offset + new_width), 
                                             max(canvas_height, y_offset + new_height)))
         
-        # Update scrollbars visibility based on image vs canvas size
         self._update_scrollbars()
         
-        # If in fit mode or image is smaller than canvas, center the view
         if self.fit_to_window or (new_width <= canvas_width and new_height <= canvas_height):
-            # Reset scroll position to start
             self.canvas.xview_moveto(0)
             self.canvas.yview_moveto(0)
 
