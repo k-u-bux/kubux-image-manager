@@ -245,6 +245,18 @@ def filter_for_files(command):
     line_list = execute_shell_command(command).stdout.splitlines()
     return [file for file in line_list if os.path.isfile(file)]
         
+
+def list_image_files_by_command(dir, cmd):
+    raw_output = subprocess.run(cmd, cwd=dir, shell=True, capture_output=True, text=True).stdout.splitlines()
+    listing = []
+    for path in raw_output:
+        if os.path.isabs(path):
+            listing.append(path)
+        else:
+            listing.append( os.path.join(dir, path) )
+    return [path for path in listing if is_image_file(path) and is_file_below_dir(path, dir)]
+    
+
     
 def move_file_to_directory(file_path, target_dir_path):
     """
@@ -1324,18 +1336,8 @@ class DirectoryThumbnailGrid(tk.Frame):
            
        return target_btn, tk_image
 
-    def list_image_files(self, dir, cmd):
-        raw_output = subprocess.run(cmd, cwd=dir, shell=True, capture_output=True, text=True).stdout.splitlines()
-        listing = []
-        for path in raw_output:
-            if os.path.isabs(path):
-                listing.append(path)
-            else:
-                listing.append( os.path.join(dir, path) )
-        return [path for path in listing if is_image_file(path) and is_file_below_dir(path, dir)]
-    
     def regrid(self):
-        new_image_paths_from_disk = self.list_image_files(self._directory_path, self._list_cmd)
+        new_image_paths_from_disk = list_image_files_by_command(self._directory_path, self._list_cmd)
         print(f"{new_image_paths_from_disk}")
         
         for btn, _ in self._active_widgets.values():
@@ -1780,20 +1782,16 @@ class ImagePicker(tk.Toplevel):
         self._top_frame = ttk.Frame(self)
         self._top_frame.pack(fill="x", padx=5, pady=5)
         if True:
-            # list command
-            self.list_cmd_entry = tk.Entry(self._top_frame, font=self.master.main_font, width=30)
-            self.list_cmd_entry.insert(0, self._list_cmd)
-            self.list_cmd_entry.pack(side="right")
-            self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
-            self.list_cmd_entry.bind("<Button-3>", self._show_list_cmd_menu)
-            self.list_cmd_entry.bind("<Leave>", lambda event: self.focus_set())
-            # Breadcrumb Frame
+            # Left side: Breadcrumb Navigation
             self.breadcrumb_nav = BreadCrumNavigator(
                 self._top_frame, # Parent is the _control_frame
                 on_navigate_callback=self._browse_directory, # This callback will update the grid and breadcrumbs
                 font=self.master.main_font, # Use the app's font
             )
             self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
+            # Right side: Clone and Close buttons, thumnail slider
+            tk.Button(self._top_frame, font=self.master.main_font, text="Close", relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
+            tk.Button(self._top_frame, font=self.master.main_font, text="Clone", relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
         
         # Thumbnail Display Area (Canvas and Scrollbar)
         self._canvas_frame = ttk.Frame(self)
@@ -1828,15 +1826,14 @@ class ImagePicker(tk.Toplevel):
             self.bind("<Escape>", lambda e: self._on_close())
 
         # Control Frame (at the bottom)
-        self._control_frame = ttk.Frame(self)
-        self._control_frame.pack(fill="x", padx=5, pady=5)
+        self._bot_frame = ttk.Frame(self)
+        self._bot_frame.pack(fill="x", padx=5, pady=5)
         if True:
-            # Right side: Clone and Close buttons, thumnail slider
-            tk.Button(self._control_frame, font=self.master.main_font, text="Close", relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
-            tk.Button(self._control_frame, font=self.master.main_font, text="Clone", relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
-
-            dummy_C_frame = tk.Frame(self._control_frame)
-            dummy_C_frame.pack(side="right", expand=False, fill="x")
+            # thumbnail sizes (left)
+            dummy_C_label = tk.Label(self._bot_frame, text="Size:", font=self.master.main_font)
+            dummy_C_label.pack(side="left", padx=(2,12))
+            dummy_C_frame = tk.Frame(self._bot_frame)
+            dummy_C_frame.pack(side="left", expand=False, fill="x")
             self.thumbnail_slider = tk.Scale(
                 dummy_C_frame, from_=96, to=480, orient="horizontal", relief=SCALE_RELIEF,
                 resolution=20, showvalue=False
@@ -1844,8 +1841,18 @@ class ImagePicker(tk.Toplevel):
             self.thumbnail_slider.set(self._thumbnail_width)
             self.thumbnail_slider.config(command=self._update_thumbnail_width)
             self.thumbnail_slider.pack(anchor="e")
-            dummy_C_label = tk.Label(self._control_frame, text="Size:", font=self.master.main_font)
-            dummy_C_label.pack(side="right", padx=(12,0))
+            # list command (left)
+            dummy_D_label = tk.Label(self._bot_frame, text="Filter:", font=self.master.main_font)
+            dummy_D_label.pack(side="left", padx=(36,12))
+            self.list_cmd_entry = tk.Entry(self._bot_frame, font=self.master.main_font)
+            self.list_cmd_entry.insert(0, self._list_cmd)
+            self.list_cmd_entry.pack(side="left", fill="x", expand=True, padx=(0,12))
+            self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
+            self.list_cmd_entry.bind("<Button-3>", self._show_list_cmd_menu)
+            self.list_cmd_entry.bind("<Leave>", lambda event: self.focus_set())
+            # Select and Deselect All buttons (right)
+            tk.Button(self._bot_frame, font=self.master.main_font, text="Sel. All", relief=BUTTON_RELIEF, command=self._on_select).pack(side="right", padx=(24, 2))
+            tk.Button(self._bot_frame, font=self.master.main_font, text="Desel.", relief=BUTTON_RELIEF, command=self._on_deselect).pack(side="right", padx=(24, 2))
 
         self.watcher.start_watching(self._image_dir)
         self._browse_directory(self._image_dir)
@@ -1931,6 +1938,17 @@ class ImagePicker(tk.Toplevel):
         self.watcher.stop_watching()
         self.master.open_picker_dialogs.remove(self)
         self.destroy()
+
+    def _on_select(self):
+        all_files = list_image_files_by_command( self._image_dir, self._list_cmd )
+        for file in all_files:
+            self.master.select_file( file )
+
+    def _on_deselect(self):
+        all_files = list_image_files_by_command( self._image_dir, self._list_cmd )
+        for file in all_files:
+            self.master.unselect_file( file )
+
 
     def _browse_directory(self, path):
         if not os.path.isdir(path):
@@ -2109,7 +2127,6 @@ class ImageManager(tk.Tk):
         self.configure(background=self.cget("background"))
         font_name, font_size = get_linux_system_ui_font_info()
         self.repaint_job = None
-        self.ui_scale = 1.0
         self._ui_scale_job = None
         self.base_font_size = font_size
         self.main_font = tkFont.Font(family=font_name, size=int(self.base_font_size * self.ui_scale))
@@ -2215,7 +2232,7 @@ class ImageManager(tk.Tk):
                 dummy_C_frame = tk.Frame(self.controll_frame)
                 dummy_C_frame.pack(side="right", expand=False, fill="x")
                 self.ui_slider = tk.Scale(
-                    dummy_C_frame, from_=0.5, to=3.5, orient="horizontal", relief=SCALE_RELIEF,
+                    dummy_C_frame, from_=0.2, to=3.5, orient="horizontal", relief=SCALE_RELIEF,
                     resolution=0.1, showvalue=False
                 )
                 self.ui_slider.set(self.ui_scale)
