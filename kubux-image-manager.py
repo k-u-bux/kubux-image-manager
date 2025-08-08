@@ -191,6 +191,22 @@ def remove_falsy(the_list):
     the_list = [entry for entry in the_list if entry]
 
 
+def copy_uniq(the_list):
+    helper = set()
+    result = []
+    for entry in the_list:
+        if not entry in helper:
+            helper.add( entry )
+            result.append( entry )
+    return ( result )
+
+
+def make_uniq(the_list):
+    new_list = copy_uniq(the_list)
+    the_list.clear()
+    the_list.extend( new_list )
+
+    
 # --- file ops ---
 
 def is_file_below_dir(file_path, dir_path):
