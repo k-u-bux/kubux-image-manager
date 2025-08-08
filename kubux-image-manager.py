@@ -971,30 +971,32 @@ class ImageViewer(tk.Toplevel):
         
         self.bind("<Configure>", self._on_configure)
         self._bind_canvas_events()
-        self.focus_set()
-        self.canvas.focus_set()
-        
+        self._update_title()
         self.update_idletasks()
         self._update_image()
         self.update_idletasks()
-
-        self._update_title()
         self.resizable(True, True)
         self.wm_attributes("-type", "normal")
-        self.wm_attributes('-fullscreen', self._fullscreen)
+        self.wm_attributes('-fullscreen', False)
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._geometry=self.geometry()
         self.deiconify()
-        
+        self.set_screen_mode(self._fullscreen)
+        self.focus_set()
+        self.canvas.focus_set()
+
     def get_image_info(self):
         self._geometry = self.geometry()
         return self.image_path, self._geometry
         
-    def toggle_fullscreen(self):
-        self._fullscreen = not self._fullscreen
-        self.attributes('-fullscreen', self._fullscreen)
+    def set_screen_mode(self, is_fullscreen):
+        self.attributes('-fullscreen', is_fullscreen)
         self.update_idletasks()
         self._update_image()
+
+    def toggle_fullscreen(self):
+        self._fullscreen = not self._fullscreen
+        self.set_screen_mode(self._fullscreen)
 
     def _update_title(self):
         title = f"{self.file_name} (file)"
