@@ -188,11 +188,16 @@ def get_linux_ui_font():
 
 # --- file ops ---
 
-def is_file_in_dir(file_path, dir_path):
+def is_file_below_dir(file_path, dir_path):
     file_path = os.path.abspath(file_path)
     dir_path = os.path.abspath(dir_path)
     return file_path.startswith(dir_path + os.sep)
 
+def is_file_in_dir(file_path, dir_path):
+    file_path = os.path.abspath(file_path)
+    dir_path = os.path.abspath(dir_path)
+    return file_path == os.path.join( dir_path, os.path.basename( file_path ) )
+    
 def execute_shell_command(command):
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     print(f"return code = {result.returncode}")
@@ -646,20 +651,20 @@ class BackgroundWorker:
         self.resume()
         
 
+def is_image_file_name(file_name):
+    return file_name.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS)
+        
+def is_image_file(file_path):
+    file_name = os.path.basename(file_path)
+    print(f"checking {file_path} / {file_name}")
+    return os.path.isfile(file_path) and is_image_file_name(file_name)
+        
 def list_image_files(directory_path):
+    print(f"list dir {directory_path}")
     if not os.path.isdir(directory_path):
         return []
-
-    image_files = []
-
-    for filename in os.listdir(directory_path):
-        f_path = os.path.join(directory_path, filename)
-        # Check if it's a file and its lowercase extension is in our supported list
-        if os.path.isfile(f_path) and filename.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS):
-            image_files.append(f_path)
-
-    image_files.sort()
-    return image_files
+    full_paths = [os.path.join(directory_path,file) for file in os.listdir(directory_path)]
+    return [path for path in full_paths if is_image_file(path)]
 
 def settle_geometry(widget):
     while widget.master:
@@ -1299,12 +1304,13 @@ class ImageViewer(tk.Toplevel):
         self._update_title()
             
 class DirectoryThumbnailGrid(tk.Frame):
-    def __init__(self, master, directory_path="", item_width=None, item_border_width=None,
+    def __init__(self, master, directory_path="", list_cmd="ls", item_width=None, item_border_width=None,
                  button_config_callback=None, **kwargs):
         super().__init__(master, class_="kubux-image-manager", **kwargs)
         self.master = master
         self._item_border_width = item_border_width
         self._directory_path = directory_path
+        self._list_cmd = list_cmd
         self._item_width = item_width
         self._button_config_callback = button_config_callback 
         self._widget_cache = OrderedDict() # This is a dict: hash_str -> (tk.Button, ImageTk.PhotoImage)
@@ -1321,9 +1327,10 @@ class DirectoryThumbnailGrid(tk.Frame):
         height = self.winfo_reqheight()
         return width, height
         
-    def set_size_and_path(self, width, path):
+    def set_size_path_and_command(self, width, path, list_cmd):
         self._directory_path = path
         self._item_width = width
+        self._list_cmd = list_cmd
         return self.regrid()
 
             
@@ -1342,13 +1349,21 @@ class DirectoryThumbnailGrid(tk.Frame):
            self._widget_cache.move_to_end(cache_key)
            
        return target_btn, tk_image
-            
-    def regrid(self):
-        new_image_paths_from_disk = list_image_files(self._directory_path)
-        # Note: Since the helper returns sorted (oldest first), we need to reverse it
-        # to match the existing behavior of showing newest first
-        new_image_paths_from_disk.reverse()
 
+    def list_image_files(self, dir, cmd):
+        raw_output = subprocess.run(cmd, cwd=dir, shell=True, capture_output=True, text=True).stdout.splitlines()
+        listing = []
+        for path in raw_output:
+            if os.path.isabs(path):
+                listing.append(path)
+            else:
+                listing.append( os.path.join(dir, path) )
+        return [path for path in listing if is_image_file(path) and is_file_below_dir(path, dir)]
+    
+    def regrid(self):
+        new_image_paths_from_disk = self.list_image_files(self._directory_path, self._list_cmd)
+        print(f"{new_image_paths_from_disk}")
+        
         for btn, _ in self._active_widgets.values():
             assert btn is not None
             assert btn.winfo_exists()
@@ -1735,8 +1750,9 @@ class ImagePicker(tk.Toplevel):
         self.master = master
         self._thumbnail_width = picker_info[0]
         self._image_dir = picker_info[1]
+        self._list_cmd = picker_info[2]
+        self._geometry = picker_info[3]
         self.background_worker = BackgroundWorker( self._image_dir, self._thumbnail_width )
-        self._geometry = picker_info[2]
         self._update_thumbnail_job = None
         self.watcher = DirectoryWatcher(self)
         self.geometry(self._geometry)
@@ -1755,13 +1771,17 @@ class ImagePicker(tk.Toplevel):
 
     def get_picker_info(self):
         self._geometry = self.geometry()
-        return self._thumbnail_width, self._image_dir, self._geometry
+        return self._thumbnail_width, self._image_dir, self._list_cmd, self._geometry
         
     def _on_clone(self):
         self.master.open_picker_dialog( self.get_picker_info() )
+
+    def _update_list_cmd(self, event):
+        self._list_cmd = event.widget.get()
+        self._repaint()
         
     def _repaint(self):
-        self._gallery_grid.set_size_and_path(self._thumbnail_width, self._image_dir)
+        self._gallery_grid.set_size_path_and_command(self._thumbnail_width, self._image_dir, self._list_cmd)
         self.update_idletasks()
 
     def _handle_drop(self, source_button, target_picker):
@@ -1771,65 +1791,74 @@ class ImagePicker(tk.Toplevel):
         self.master.move_file_to_directory(source_button.img_path, target_picker._image_dir)
         
     def _create_widgets(self):
+        # top bar
+        self._top_frame = ttk.Frame(self)
+        self._top_frame.pack(fill="x", padx=5, pady=5)
+        if True:
+            # list command
+            self.list_cmd_entry = tk.Entry(self._top_frame, font=self.master.main_font, width=30)
+            self.list_cmd_entry.insert(0, self._list_cmd)
+            self.list_cmd_entry.pack(side="right")
+            self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
+            # Breadcrumb Frame
+            self.breadcrumb_nav = BreadCrumNavigator(
+                self._top_frame, # Parent is the _control_frame
+                on_navigate_callback=self._browse_directory, # This callback will update the grid and breadcrumbs
+                font=self.master.main_font, # Use the app's font
+            )
+            self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
+        
         # Thumbnail Display Area (Canvas and Scrollbar)
         self._canvas_frame = ttk.Frame(self)
         self._canvas_frame.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        self._gallery_canvas = tk.Canvas(self._canvas_frame, bg=self.cget("background"))
-        self._gallery_scrollbar = tk.Scrollbar(self._canvas_frame, relief=SCROLLBAR_RELIEF, orient="vertical", command=self._gallery_canvas.yview)
-        self._gallery_canvas.config(yscrollcommand=self._gallery_scrollbar.set)
-        
-        self._gallery_scrollbar.pack(side="right", fill="y")
-        self._gallery_canvas.pack(side="left", fill="both", expand=True)
-        
-        self._gallery_grid = DirectoryThumbnailGrid(
-            self._gallery_canvas,
-            directory_path=self._image_dir,
-            item_width=self._thumbnail_width,
-            item_border_width=6,
-            button_config_callback=self._configure_picker_button,
-            bg=self.cget("background")
-        )
-        self._gallery_canvas.create_window((0, 0), window=self._gallery_grid, anchor="nw")
+        if True:
+            self._gallery_canvas = tk.Canvas(self._canvas_frame, bg=self.cget("background"))
+            self._gallery_scrollbar = tk.Scrollbar(self._canvas_frame, relief=SCROLLBAR_RELIEF, orient="vertical", command=self._gallery_canvas.yview)
+            self._gallery_canvas.config(yscrollcommand=self._gallery_scrollbar.set)
+            
+            self._gallery_scrollbar.pack(side="right", fill="y")
+            self._gallery_canvas.pack(side="left", fill="both", expand=True)
+            
+            self._gallery_grid = DirectoryThumbnailGrid(
+                self._gallery_canvas,
+                directory_path=self._image_dir,
+                item_width=self._thumbnail_width,
+                item_border_width=6,
+                button_config_callback=self._configure_picker_button,
+                bg=self.cget("background")
+            )
+            self._gallery_canvas.create_window((0, 0), window=self._gallery_grid, anchor="nw")
 
-        self._gallery_canvas.bind("<Configure>", self._on_canvas_configure)
-        self._gallery_grid.bind("<Configure>", lambda e: self._gallery_canvas.configure(scrollregion=self._gallery_canvas.bbox("all")))
+            self._gallery_canvas.bind("<Configure>", self._on_canvas_configure)
+            self._gallery_grid.bind("<Configure>", lambda e: self._gallery_canvas.configure(scrollregion=self._gallery_canvas.bbox("all")))
         
-        self._bind_mousewheel(self)
+            self._bind_mousewheel(self)
 
-        self.bind("<Up>", lambda e: self._gallery_canvas.yview_scroll(-1, "units"))
-        self.bind("<Down>", lambda e: self._gallery_canvas.yview_scroll(1, "units"))
-        self.bind("<Prior>", lambda e: self._gallery_canvas.yview_scroll(-1, "pages"))
-        self.bind("<Next>", lambda e: self._gallery_canvas.yview_scroll(1, "pages"))
-        self.bind("<Escape>", lambda e: self._on_close())
+            self.bind("<Up>", lambda e: self._gallery_canvas.yview_scroll(-1, "units"))
+            self.bind("<Down>", lambda e: self._gallery_canvas.yview_scroll(1, "units"))
+            self.bind("<Prior>", lambda e: self._gallery_canvas.yview_scroll(-1, "pages"))
+            self.bind("<Next>", lambda e: self._gallery_canvas.yview_scroll(1, "pages"))
+            self.bind("<Escape>", lambda e: self._on_close())
 
         # Control Frame (at the bottom)
         self._control_frame = ttk.Frame(self)
         self._control_frame.pack(fill="x", padx=5, pady=5)
+        if True:
+            # Right side: Clone and Close buttons, thumnail slider
+            tk.Button(self._control_frame, font=self.master.main_font, text="Close", relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
+            tk.Button(self._control_frame, font=self.master.main_font, text="Clone", relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
 
-        # Breadcrumb Frame
-        self.breadcrumb_nav = BreadCrumNavigator(
-            self._control_frame, # Parent is the _control_frame
-            on_navigate_callback=self._browse_directory, # This callback will update the grid and breadcrumbs
-            font=self.master.main_font, # Use the app's font
-        )
-        self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
-
-        # Right side: Clone and Close buttons, thumnail slider
-        tk.Button(self._control_frame, font=self.master.main_font, text="Close", relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
-        tk.Button(self._control_frame, font=self.master.main_font, text="Clone", relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
-
-        dummy_C_frame = tk.Frame(self._control_frame)
-        dummy_C_frame.pack(side="right", expand=False, fill="x")
-        self.thumbnail_slider = tk.Scale(
-            dummy_C_frame, from_=96, to=480, orient="horizontal", relief=SCALE_RELIEF,
-            resolution=20, showvalue=False
-        )
-        self.thumbnail_slider.set(self._thumbnail_width)
-        self.thumbnail_slider.config(command=self._update_thumbnail_width)
-        self.thumbnail_slider.pack(anchor="e")
-        dummy_C_label = tk.Label(self._control_frame, text="Size:", font=self.master.main_font)
-        dummy_C_label.pack(side="right", padx=(12,0))
+            dummy_C_frame = tk.Frame(self._control_frame)
+            dummy_C_frame.pack(side="right", expand=False, fill="x")
+            self.thumbnail_slider = tk.Scale(
+                dummy_C_frame, from_=96, to=480, orient="horizontal", relief=SCALE_RELIEF,
+                resolution=20, showvalue=False
+            )
+            self.thumbnail_slider.set(self._thumbnail_width)
+            self.thumbnail_slider.config(command=self._update_thumbnail_width)
+            self.thumbnail_slider.pack(anchor="e")
+            dummy_C_label = tk.Label(self._control_frame, text="Size:", font=self.master.main_font)
+            dummy_C_label.pack(side="right", padx=(12,0))
 
         self.watcher.start_watching(self._image_dir)
         self._browse_directory(self._image_dir)
@@ -2149,9 +2178,10 @@ class ImageManager(tk.Tk):
         self.commands = self.app_settings.get("commands", "Open {*}\nSetWP *\nOpen ${HOME}/Pictures\necho {*} >> /tmp/files")
         self.current_index = self.app_settings.get("current_index", 1)
         self.selected_files = self.app_settings.get("selected_files", [])
-        self.new_picker_info = self.app_settings.get("new_picker_info", [ 192, PICTURES_DIR, "1000x600" ])
+        self.new_picker_info = self.app_settings.get("new_picker_info", [ 192, PICTURES_DIR, "ls", "1000x600" ])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
         self.open_image_info = self.app_settings.get("open_image_info", [])
+        self.list_commands = self.app_settings.get("list_commands", [ "ls", "find . -maxdepth 1 -type f" ] )
         
     def _save_app_settings(self):
         try:
@@ -2166,6 +2196,7 @@ class ImageManager(tk.Tk):
             self.app_settings["new_picker_info"] = self.new_picker_info
             self.app_settings["open_picker_info"] = self.collect_open_picker_info()
             self.app_settings["open_image_info"] = self.collect_open_image_info()
+            self.app_settings["list_commands"] = self.list_commands
 
             with open(APP_SETTINGS_FILE, 'w') as f:
                 json.dump(self.app_settings, f, indent=4)
@@ -2362,7 +2393,7 @@ class ImageManager(tk.Tk):
         print(f"opening directory {directory_path}")
         if self.open_picker_dialogs:
             self.new_picker_info = self.open_picker_dialogs[-1].get_picker_info()
-        self.open_picker_dialog([ self.new_picker_info[0], directory_path, self.new_picker_info[2] ])
+        self.open_picker_dialog([ self.new_picker_info[0], directory_path, self.new_picker_info[2], self.new_picker_info[3] ])
 
     def set_wp(self, path):
         try:
