@@ -2225,6 +2225,7 @@ class ImageManager(tk.Tk):
         command = expand_env_vars(command)
         print(f"command after expansion of environment variables = {command}")
         to_do = expand_wildcards( command, args )
+        status_change = False
         for cmd in to_do:
             print(f"executing {cmd}")
             if  ( files := strip_prefix("Open:", cmd) ) is not None:
@@ -2243,17 +2244,21 @@ class ImageManager(tk.Tk):
                 if path_list:
                     self.set_wp(path_list[-1])
             elif ( list_cmd := strip_prefix("Select:", cmd) ) is not None:
+                status_change = True
                 file_list = filter_for_files(list_cmd)
                 for file in file_list: self.select_file(file)
             elif ( list_cmd := strip_prefix("Deselect:", cmd) ) is not None:
+                status_change = True
                 file_list = filter_for_files(list_cmd)
                 for file in file_list: self.unselect_file(file)
             else:
+                status_change = True
                 print(f"execute as a shell command: {cmd}")
                 execute_shell_command(cmd)
                 self.broadcast_contents_change()
-        self.sanitize_selected_files()
-        self.broadcast_selection_change()
+        if status_change:
+            self.sanitize_selected_files()
+            self.broadcast_selection_change()
         
     def execute_command(self, command):
         self.execute_command_with_args( command, self.selected_files)
