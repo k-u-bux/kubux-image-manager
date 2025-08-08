@@ -1956,7 +1956,7 @@ class ImagePicker(tk.Toplevel):
         ghost.overrideredirect(True)
         ghost.attributes('-alpha', 0.7)
         if files:
-            ghost_label = tk.Label(ghost, text=f"{len(files)} files from directory {base} selected", wraplength=300,
+            ghost_label = tk.Label(ghost, text=f"move {len(files)} files from directory {base} selected", wraplength=300,
                                    font=self.master.main_font, bg="light green", relief="flat", padx=10, pady=5)
         else:
             ghost_label = tk.Label(ghost, text=f"NO FILES SELECTED in {base}", wraplength=300,
