@@ -187,10 +187,15 @@ def get_linux_ui_font():
     
 # --- list ops ---
 
+def copy_truish(the_list):
+     return [entry for entry in the_list if entry]
+
 def remove_falsy(the_list):
-    the_list = [entry for entry in the_list if entry]
+    new_list = copy_truish( the_list )
+    the_list.clear()
+    the_list.extend( new_list )
 
-
+    
 def copy_uniq(the_list):
     helper = set()
     result = []
@@ -200,13 +205,17 @@ def copy_uniq(the_list):
             result.append( entry )
     return ( result )
 
-
 def make_uniq(the_list):
     new_list = copy_uniq(the_list)
     the_list.clear()
     the_list.extend( new_list )
 
+
+def prepend_or_move_to_front(entry, the_list):
+    the_list.insert( 0, entry )
+    make_uniq(the_list)
     
+        
 # --- file ops ---
 
 def is_file_below_dir(file_path, dir_path):
@@ -1591,6 +1600,8 @@ class LongMenu(tk.Toplevel):
         if selected_indices:
             # Store the selected directory name, not the full path yet
             self.result = self._options[selected_indices[0]]
+        else:
+            self.result = self._options[self._listbox.index(tk.ACTIVE)]
         self.destroy()
 
     def _cancel(self, event=None):
@@ -1801,6 +1812,29 @@ class ImagePicker(tk.Toplevel):
         self._list_cmd = event.widget.get()
         self._repaint()
         
+    def _show_list_cmd_menu(self, event):
+        widget = event.widget
+        current_cmd = widget.get().strip()
+        current_cmd = current_cmd.strip()
+        prepend_or_move_to_front(current_cmd, self.master.list_commands)
+        widget_x = widget.winfo_rootx()
+        widget_y = widget.winfo_rooty()
+        widget_height = widget.winfo_height()
+        menu_x = widget_x
+        menu_y = widget_y + widget_height
+        selector_dialog = LongMenu(
+            self,
+            None,
+            self.master.list_commands,
+            font=self.master.main_font,
+            x_pos=menu_x,
+            y_pos=menu_y
+        )
+        selected_cmd = selector_dialog.result
+        if selected_cmd:
+            widget.delete(0, len(widget.get()))
+            widget.insert(0, selected_cmd)
+        
     def _repaint(self):
         self._gallery_grid.set_size_path_and_command(self._thumbnail_width, self._image_dir, self._list_cmd)
         self.update_idletasks()
@@ -1821,6 +1855,7 @@ class ImagePicker(tk.Toplevel):
             self.list_cmd_entry.insert(0, self._list_cmd)
             self.list_cmd_entry.pack(side="right")
             self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
+            self.list_cmd_entry.bind("<Button-3>", self._show_list_cmd_menu)
             # Breadcrumb Frame
             self.breadcrumb_nav = BreadCrumNavigator(
                 self._top_frame, # Parent is the _control_frame
