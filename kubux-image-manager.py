@@ -719,160 +719,86 @@ def settle_geometry(widget):
 DRAG_DELAY_MS = 250
 DRAG_THRESHOLD = 5
 
-def bind_drop(target_widget, handle_drop):
+def _bind_drop_generic(target_widget, handle_drop, attribute_name):
     def wrapper(self, source_widget):
         handle_drop(source_widget, target_widget)
-    target_widget.handle_drop = types.MethodType(wrapper, target_widget)
+    setattr(target_widget, attribute_name, types.MethodType(wrapper, target_widget))
+
+def bind_drop(target_widget, handle_drop):
+    _bind_drop_generic(target_widget, handle_drop, 'handle_drop')
+
+def bind_right_drop(target_widget, handle_right_drop):
+    _bind_drop_generic(target_widget, handle_right_drop, 'handle_right_drop')
+
+def _bind_click_or_drag_generic(source_widget, make_ghost, click_handler, button, attribute_name):
+    mutable = {
+        'drag_start_timer': None,
+        'ghost': None,
+        'drag_start_x': 0,
+        'drag_start_y': 0,
+        'dragging_widget': None
+    }
+    root_window = source_widget.winfo_toplevel()    
+    button_press = f"<Button-{button}>"
+    button_motion = f"<B{button}-Motion>"
+    button_release = f"<ButtonRelease-{button}>"
+    
+    def start_drag():
+        mutable['drag_start_timer'] = None
+        mutable['ghost'] = make_ghost(mutable['dragging_widget'], mutable['drag_start_x'], mutable['drag_start_y'])
+        root_window.bind(button_motion, do_drag)
+        root_window.bind(button_release, end_drag)
+
+    def do_drag(event):
+        mutable['ghost'].geometry(f"+{event.x_root - 10}+{event.y_root - 10}")
+
+    def end_drag(event):
+        x, y = event.x_root, event.y_root
+        mutable['ghost'].destroy()
+        mutable['ghost'] = None
+        target_widget = root_window.winfo_containing(x, y)
+        while target_widget:
+            if hasattr(target_widget, attribute_name):
+                getattr(target_widget, attribute_name)(mutable['dragging_widget'])
+                break
+            elif hasattr(target_widget, 'master'):
+                target_widget = target_widget.master
+            else:
+                break
+        root_window.unbind(button_motion)
+        root_window.unbind(button_release)
+        mutable['dragging_widget'] = None
+        
+    def on_press(event):
+        mutable['drag_start_x'] = event.x_root
+        mutable['drag_start_y'] = event.y_root
+        mutable['dragging_widget'] = event.widget
+        mutable['drag_start_timer'] = root_window.after(DRAG_DELAY_MS, start_drag)
+        
+    def on_motion(event):
+        if mutable['drag_start_timer'] and mutable['dragging_widget']:
+            distance_moved = ((event.x_root - mutable['drag_start_x'])**2 + (event.y_root - mutable['drag_start_y'])**2)**0.5
+            if distance_moved > DRAG_THRESHOLD:
+                root_window.after_cancel(mutable['drag_start_timer'])
+                mutable['drag_start_timer'] = None
+                start_drag()
+
+    def on_release(event):
+        if mutable['drag_start_timer']:
+            root_window.after_cancel(mutable['drag_start_timer'])
+            mutable['drag_start_timer'] = None
+            click_handler(event.widget)
+            mutable['dragging_widget'] = None
+
+    source_widget.bind(button_press, on_press)
+    source_widget.bind(button_motion, on_motion)
+    source_widget.bind(button_release, on_release)
 
 def bind_click_or_drag(source_widget, make_ghost, click_handler):
-    # todo: why are we using a dict here ?
-    state = {
-        'drag_start_timer': None,
-        'ghost': None,
-        'drag_start_x': 0,
-        'drag_start_y': 0,
-        'dragging_widget': None
-    }
-    root_window = source_widget.winfo_toplevel()
-    
-    def start_drag():
-        # print(f"start draggin in root {root_window} with state {state}")
-        state['drag_start_timer'] = None
-        state['ghost'] = make_ghost(state['dragging_widget'], state['drag_start_x'], state['drag_start_y'])
-        root_window.bind("<B1-Motion>", do_drag)
-        root_window.bind("<ButtonRelease-1>", end_drag)
-
-    def do_drag(event):
-        # print(f"moving to {event.x_root}+{event.y_root}")
-        state['ghost'].geometry(f"+{event.x_root - 10}+{event.y_root - 10}")
-
-    def end_drag(event):
-        # print(f"dropping at {event.x_root}+{event.y_root}")
-        x, y = event.x_root, event.y_root
-        state['ghost'].destroy()
-        state['ghost'] = None
-        target_widget = root_window.winfo_containing(x, y)
-        while target_widget:
-            # print(f"trying drop on {target_widget}")
-            if hasattr(target_widget, 'handle_drop'):
-                # print(f"{target_widget} should handle drop")
-                target_widget.handle_drop(state['dragging_widget'])
-                break
-            elif hasattr(target_widget, 'master'):
-                # print(f"{target_widget} cannot handle drop")
-                target_widget = target_widget.master
-                # print(f"moving up the hierarchy to master = {target_widget}")                
-            else:
-                # print(f"{target_widget} cannot handle drop and has no way to move up the hierarchy")
-                # print("break")
-                break
-        # if not target_widget: print("Dropped outside any target zone.")
-        root_window.unbind("<B1-Motion>")
-        root_window.unbind("<ButtonRelease-1>")
-        state['dragging_widget'] = None
-        
-    def on_press(event):
-        state['drag_start_x'] = event.x_root
-        state['drag_start_y'] = event.y_root
-        state['dragging_widget'] = event.widget
-        state['drag_start_timer'] = root_window.after(DRAG_DELAY_MS, start_drag)
-        
-    def on_motion(event):
-        if state['drag_start_timer'] and state['dragging_widget']:
-            distance_moved = ((event.x_root - state['drag_start_x'])**2 + (event.y_root - state['drag_start_y'])**2)**0.5
-            if distance_moved > DRAG_THRESHOLD:
-                root_window.after_cancel(state['drag_start_timer'])
-                state['drag_start_timer'] = None
-                start_drag()
-
-    def on_release(event):
-        if state['drag_start_timer']:
-            root_window.after_cancel(state['drag_start_timer'])
-            state['drag_start_timer'] = None
-            click_handler(event.widget)
-            state['dragging_widget'] = None
-
-    source_widget.bind("<Button-1>", on_press)
-    source_widget.bind("<B1-Motion>", on_motion)
-    source_widget.bind("<ButtonRelease-1>", on_release)
-
-    
-def bind_right_drop(target_widget, handle_right_drop):
-    def wrapper(self, source_widget):
-        handle_right_drop(source_widget, target_widget)
-    target_widget.handle_right_drop = types.MethodType(wrapper, target_widget)
+    _bind_click_or_drag_generic(source_widget, make_ghost, click_handler, 1, 'handle_drop')
 
 def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler):
-    # todo: why are we using a dict here ?
-    state = {
-        'drag_start_timer': None,
-        'ghost': None,
-        'drag_start_x': 0,
-        'drag_start_y': 0,
-        'dragging_widget': None
-    }
-    root_window = source_widget.winfo_toplevel()
-    
-    def start_drag():
-        # print(f"start draggin in root {root_window} with state {state}")
-        state['drag_start_timer'] = None
-        state['ghost'] = make_ghost(state['dragging_widget'], state['drag_start_x'], state['drag_start_y'])
-        root_window.bind("<B3-Motion>", do_drag)
-        root_window.bind("<ButtonRelease-3>", end_drag)
-
-    def do_drag(event):
-        # print(f"moving to {event.x_root}+{event.y_root}")
-        state['ghost'].geometry(f"+{event.x_root - 10}+{event.y_root - 10}")
-
-    def end_drag(event):
-        # print(f"dropping at {event.x_root}+{event.y_root}")
-        x, y = event.x_root, event.y_root
-        state['ghost'].destroy()
-        state['ghost'] = None
-        target_widget = root_window.winfo_containing(x, y)
-        while target_widget:
-            # print(f"trying drop on {target_widget}")
-            if hasattr(target_widget, 'handle_right_drop'):
-                # print(f"{target_widget} should handle drop")
-                target_widget.handle_right_drop(state['dragging_widget'])
-                break
-            elif hasattr(target_widget, 'master'):
-                # print(f"{target_widget} cannot handle drop")
-                target_widget = target_widget.master
-                # print(f"moving up the hierarchy to master = {target_widget}")                
-            else:
-                # print(f"{target_widget} cannot handle drop and has no way to move up the hierarchy")
-                # print("break")
-                break
-        # if not target_widget: print("Dropped outside any target zone.")
-        root_window.unbind("<B3-Motion>")
-        root_window.unbind("<ButtonRelease-3>")
-        state['dragging_widget'] = None
-        
-    def on_press(event):
-        state['drag_start_x'] = event.x_root
-        state['drag_start_y'] = event.y_root
-        state['dragging_widget'] = event.widget
-        state['drag_start_timer'] = root_window.after(DRAG_DELAY_MS, start_drag)
-        
-    def on_motion(event):
-        if state['drag_start_timer'] and state['dragging_widget']:
-            distance_moved = ((event.x_root - state['drag_start_x'])**2 + (event.y_root - state['drag_start_y'])**2)**0.5
-            if distance_moved > DRAG_THRESHOLD:
-                root_window.after_cancel(state['drag_start_timer'])
-                state['drag_start_timer'] = None
-                start_drag()
-
-    def on_release(event):
-        if state['drag_start_timer']:
-            root_window.after_cancel(state['drag_start_timer'])
-            state['drag_start_timer'] = None
-            right_click_handler(event.widget)
-            state['dragging_widget'] = None
-
-    source_widget.bind("<Button-3>", on_press)
-    source_widget.bind("<B3-Motion>", on_motion)
-    source_widget.bind("<ButtonRelease-3>", on_release)
+    _bind_click_or_drag_generic(source_widget, make_ghost, right_click_handler, 3, 'handle_right_drop')
 
     
 # --- widgets ---
