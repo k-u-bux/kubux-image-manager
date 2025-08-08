@@ -1120,21 +1120,17 @@ class ImageViewer(tk.Toplevel):
             self.canvas.yview_moveto(0)
 
     def _update_scrollbars(self):
-        """Show or hide scrollbars based on the image size compared to canvas."""
-        # Get image and canvas dimensions
         img_width = self.display_image.width
         img_height = self.display_image.height
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
         
-        # Show/hide horizontal scrollbar
         if img_width <= canvas_width:
             self.h_scrollbar.grid_remove()
             self.canvas.xview_moveto(0)  # Reset horizontal scroll position
         else:
             self.h_scrollbar.grid()
             
-        # Show/hide vertical scrollbar
         if img_height <= canvas_height:
             self.v_scrollbar.grid_remove()
             self.canvas.yview_moveto(0)  # Reset vertical scroll position
@@ -1171,7 +1167,6 @@ class ImageViewer(tk.Toplevel):
         self.destroy()
         
     def _on_key(self, event):
-        """Handle keyboard events."""
         key = event.char
         
         if key == '+' or key == '=':  # Zoom in
@@ -1183,102 +1178,74 @@ class ImageViewer(tk.Toplevel):
             self._update_image()
     
     def _on_mouse_down(self, event):
-        """Handle mouse button press."""
         self.panning = True
         self.pan_start_x = event.x
         self.pan_start_y = event.y
         self.canvas.config(cursor="fleur")  # Change cursor to indicate panning
         
     def _on_mouse_drag(self, event):
-        """Handle mouse drag for panning."""
         if not self.panning:
             return
             
-        # Calculate the distance moved
         dx = self.pan_start_x - event.x
         dy = self.pan_start_y - event.y
         
-        # Move the canvas view
         self.canvas.xview_scroll(dx, "units")
         self.canvas.yview_scroll(dy, "units")
         
-        # Update the starting position
         self.pan_start_x = event.x
         self.pan_start_y = event.y
     
     def _on_mouse_up(self, event):
-        """Handle mouse button release."""
         self.panning = False
         self.canvas.config(cursor="")  # Reset cursor
     
     def _on_mouse_wheel(self, event):
-        """Handle mouse wheel events for zooming."""
-        if platform.system() == "Windows":
-            delta = event.delta
-            if delta > 0:
-                self._zoom_in(event.x, event.y)
-            else:
-                self._zoom_out(event.x, event.y)
-        else:
-            # For Linux/Unix/Mac
-            if event.num == 4:  # Scroll up
-                self._zoom_in(event.x, event.y)
-            elif event.num == 5:  # Scroll down
-                self._zoom_out(event.x, event.y)
+        # Linux
+        if event.num == 4:  # Scroll up
+            self._zoom_in(event.x, event.y)
+        elif event.num == 5:  # Scroll down
+            self._zoom_out(event.x, event.y)
                 
     def _on_configure(self, event):
-        """Handle window resize events."""
-        # Only process events for the main window, not child widgets
         if event.widget == self and self.fit_to_window:
-            # Delay update to avoid excessive redraws during resize
             self.after_cancel(getattr(self, '_resize_job', 'break'))
             self._resize_job = self.after(100, self._update_image)
     
     def _zoom_in(self, x=None, y=None):
-        """Zoom in on the image."""
         self.fit_to_window = False
         self.zoom_factor *= 1.25
         
-        # Save current view fractions before zooming
         if x is not None and y is not None:
             # Calculate the fractions to maintain zoom point
             x_fraction = self.canvas.canvasx(x) / (self.display_image.width)
             y_fraction = self.canvas.canvasy(y) / (self.display_image.height)
             
-        # Update the image with new zoom
         self._update_image()
         
-        # After zoom, scroll to maintain focus point
         if x is not None and y is not None:
-            # Calculate new position in the zoomed image
             new_x = x_fraction * self.display_image.width
             new_y = y_fraction * self.display_image.height
             
-            # Calculate canvas center
             canvas_width = self.canvas.winfo_width()
             canvas_height = self.canvas.winfo_height()
             
-            # Calculate scroll fractions
             x_view_fraction = (new_x - canvas_width / 2) / self.display_image.width
             y_view_fraction = (new_y - canvas_height / 2) / self.display_image.height
             
-            # Apply the scroll
             self.canvas.xview_moveto(max(0, min(1, x_view_fraction)))
             self.canvas.yview_moveto(max(0, min(1, y_view_fraction)))
     
     def _zoom_out(self, x=None, y=None):
-        """Zoom out from the image."""
         self.fit_to_window = False
         self.zoom_factor /= 1.25
         
-        # Minimum zoom factor - if we go below this, switch to fit mode
         min_zoom = 0.1
         if self.zoom_factor < min_zoom:
             self.fit_to_window = True
             self._update_image()
             return
             
-        # Same logic as zoom in for maintaining focus point
         if x is not None and y is not None:
             x_fraction = self.canvas.canvasx(x) / (self.display_image.width)
             y_fraction = self.canvas.canvasy(y) / (self.display_image.height)
@@ -1311,6 +1278,7 @@ class ImageViewer(tk.Toplevel):
         except Exception as e:
             print(f"renaming file {old_name} to {new_name} failed, error: {e}")    
         self._update_title()
+
             
 class DirectoryThumbnailGrid(tk.Frame):
     def __init__(self, master, directory_path="", list_cmd="ls", item_width=None, item_border_width=None,
