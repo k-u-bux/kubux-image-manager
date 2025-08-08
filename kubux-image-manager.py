@@ -229,6 +229,9 @@ def is_file_in_dir(file_path, dir_path):
     return file_path == os.path.join( dir_path, os.path.basename( file_path ) )
     
 def execute_shell_command(command):
+    result = subprocess.run(command, shell=True)
+
+def execute_shell_command_with_capture(command):
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
     print(f"return code = {result.returncode}")
     print(f"stdout = {result.stdout}")
@@ -242,7 +245,7 @@ def filter_for_files_in_directory(command, directory):
     return [file for file in line_list if (os.path.isfile(file) and is_file_in_dir(file, directory))]
         
 def filter_for_files(command):
-    line_list = execute_shell_command(command).stdout.splitlines()
+    line_list = execute_shell_command_with_capture(command).stdout.splitlines()
     return [file for file in line_list if os.path.isfile(file)]
         
 
