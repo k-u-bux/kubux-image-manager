@@ -1284,7 +1284,6 @@ class DirectoryThumbnailGrid(tk.Frame):
     def __init__(self, master, directory_path="", list_cmd="ls", item_width=None, item_border_width=None,
                  button_config_callback=None, **kwargs):
         super().__init__(master, class_="kubux-image-manager", **kwargs)
-        self.master = master
         self._item_border_width = item_border_width
         self._directory_path = directory_path
         self._list_cmd = list_cmd
@@ -1471,7 +1470,6 @@ class LongMenu(tk.Toplevel):
     def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None):
         super().__init__(master)
         self.withdraw()
-        self.master = master
         self.overrideredirect(True) # Remove window decorations (title bar, borders)
         self.transient(master)      # Tie to master window
         # self.grab_set()             # Make it modal, redirect all input here
@@ -1566,7 +1564,6 @@ class BreadCrumNavigator(ttk.Frame):
                  long_press_threshold_ms=400, drag_threshold_pixels=5):
         
         super().__init__(master)
-        self.master = master
         self._on_navigate_callback = on_navigate_callback
         self._current_path = ""
 
@@ -1725,7 +1722,6 @@ class BreadCrumNavigator(ttk.Frame):
 class ImagePicker(tk.Toplevel):
     def __init__(self, master, picker_info = None):
         super().__init__(master, class_="kubux-image-manager")
-        self.master = master
         self._thumbnail_width = picker_info[0]
         self._image_dir = picker_info[1]
         self._list_cmd = picker_info[2]
