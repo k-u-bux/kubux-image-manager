@@ -69,6 +69,7 @@ The application uses a command system to operate on selected files. Commands are
 #### Built-in Commands
 
 - `Open: {path}` - Open a file or directory
+- `Fullscreen: {path}` - Open a file in fullscreen mode
 - `SetWP: {path}` - Set the specified image as wallpaper
 - `Select: {command}` - Run command and select all files in its output
 - `Deselect: {command}` - Run command and deselect all files in its output
