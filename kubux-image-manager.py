@@ -2171,12 +2171,15 @@ class ImageManager(tk.Tk):
             self.controll_frame = tk.Frame( self.main_container )
             self.controll_frame.pack( side="bottom", fill="x", expand=False, padx=5, pady=5 )
             if True:
-                self.exec_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Process selected", font = self.main_font, command = self.execute_current_command )
+                self.exec_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Process selected", 
+                                              font = self.main_font, command = self.execute_current_command )
                 self.exec_button.pack(side="left", padx=5)
-                self.deselect_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Clear selection", font = self.main_font, command = self.clear_selection)
+                self.deselect_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Clear selection", 
+                                                  font = self.main_font, command = self.clear_selection)
                 self.deselect_button.pack(side="left", padx=5)
 
-                self.quit_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Quit", font = self.main_font, command = self.close)
+                self.quit_button = tk.Button( self.controll_frame, relief=BUTTON_RELIEF, text="Quit", 
+                                              font = self.main_font, command = self.close)
                 self.quit_button.pack(side="right", padx=5)
 
                 dummy_C_frame = tk.Frame(self.controll_frame)
