@@ -1866,14 +1866,16 @@ class ImagePicker(tk.Toplevel):
     def _make_ghost(self, button, x, y):
         dir = os.path.dirname(button.img_path)
         files = self.master.selected_files_in_directory(dir)
+        base = os.path.basename(dir)
         ghost = tk.Toplevel(self.master)
         ghost.overrideredirect(True)
         ghost.attributes('-alpha', 0.7)
         if files:
-            ghost_label = ttk.Label(ghost, text=f"{len(files)} files from directory {dir} selected", wraplength=300)
-            # bg=button['bg'], relief=button['relief'], padx=10, pady=5)
+            ghost_label = tk.Label(ghost, text=f"{len(files)} files from directory {base} selected", wraplength=300,
+                                   font=self.master.main_font, bg="light green", relief="flat", padx=10, pady=5)
         else:
-            ghost_label = ttk.Label(ghost, text=f"NO FILES SELECTED in {dir}", wraplength=300)            
+            ghost_label = tk.Label(ghost, text=f"NO FILES SELECTED in {base}", wraplength=300,
+                                   font=self.master.main_font, bg="red", relief="flat", padx=10, pady=5)
         ghost_label.pack()
         ghost.geometry(f"+{x - 10}+{y - 10}")
         return ghost
