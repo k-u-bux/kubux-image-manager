@@ -898,16 +898,17 @@ class ImageViewer(tk.Toplevel):
 
     def __init__(self, master, image_info ):
         super().__init__(master, class_="kubux-image-manager")
-        
+        print(f"opening image from info {image_info}")
+        self.withdraw()
         self.image_path = image_info[0]
         self.file_name = os.path.basename( self.image_path )
         self.dir_name = os.path.dirname( self.image_path )
         self._geometry = image_info[1]
+        self._fullscreen = image_info[2]
         self.original_image = get_full_size_image(self.image_path)
         self.display_image = None
         self.photo_image = None
-        self.is_fullscreen = False
-        
+
         if self._geometry is not None:
             self.geometry(self._geometry)            
 
@@ -980,17 +981,18 @@ class ImageViewer(tk.Toplevel):
         self._update_title()
         self.resizable(True, True)
         self.wm_attributes("-type", "normal")
-        self.wm_attributes('-fullscreen', False)
+        self.wm_attributes('-fullscreen', self._fullscreen)
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._geometry=self.geometry()
+        self.deiconify()
         
     def get_image_info(self):
         self._geometry = self.geometry()
         return self.image_path, self._geometry
         
     def toggle_fullscreen(self):
-        self.is_fullscreen = not self.is_fullscreen
-        self.attributes('-fullscreen', self.is_fullscreen)
+        self._fullscreen = not self._fullscreen
+        self.attributes('-fullscreen', self._fullscreen)
         self.update_idletasks()
         self._update_image()
 
@@ -1101,7 +1103,7 @@ class ImageViewer(tk.Toplevel):
         self._close()
     
     def _close(self):
-        if self.is_fullscreen:
+        if self._fullscreen:
             self.toggle_fullscreen()
         self.master.open_images.remove(self)
         self.destroy()
@@ -2082,7 +2084,7 @@ class ImageManager(tk.Tk):
         self._create_widgets()
         self.open_picker_dialogs = [] # list of ( thmbn_width, path, geometry )
         self.open_picker_dialogs_from_info()
-        self.open_images = [] # list of (path, geometry)
+        self.open_images = [] # list of (path, geometry, bool)
         self.open_images_from_info()
         self.command_field._set_index( self.current_index )
         
@@ -2230,6 +2232,11 @@ class ImageManager(tk.Tk):
                 path_list = shlex.split( files )
                 for path in path_list:
                     self.open_path(path)
+            elif  ( files := strip_prefix("Fullscreen:", cmd) ) is not None:
+                print(f"execute as an internal command: Fullscreen: {files}")
+                path_list = shlex.split( files )
+                for path in path_list:
+                    self.fullscreen_path(path)
             elif ( files := strip_prefix("SetWP:", cmd) ) is not None:
                 print(f"execute as an internal command: SetWP: {files}")
                 path_list = shlex.split( files )
@@ -2325,6 +2332,15 @@ class ImageManager(tk.Tk):
             picker._on_close()
         self.destroy()
 
+    def fullscreen_path(self, path):
+        try:
+            if os.path.isfile(path):
+                self.fullscreen_image_file(path)
+                return
+        except Exception as e:
+            print(f"path {path} has problems, message: {e}")
+            traceback.print_exc()
+        
     def open_path(self, path):
         try:
             if os.path.isdir(path):
@@ -2339,7 +2355,11 @@ class ImageManager(tk.Tk):
         
     def open_image_file(self, file_path):
         print(f"opening file {file_path}")
-        self.open_image([ file_path, None ])
+        self.open_image([ file_path, None, False ])
+        
+    def fullscreen_image_file(self, file_path):
+        print(f"opening file {file_path} fullscreen")
+        self.open_image([ file_path, None, True ])
         
     def open_image_directory(self, directory_path):
         print(f"opening directory {directory_path}")
