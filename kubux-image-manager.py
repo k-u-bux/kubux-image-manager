@@ -750,10 +750,6 @@ def bind_click_or_drag(source_widget, make_ghost, click_handler):
                 # print(f"{target_widget} cannot handle drop")
                 target_widget = target_widget.master
                 # print(f"moving up the hierarchy to master = {target_widget}")                
-            elif hasattr(target_widget, 'winfo_parent'):
-                # print(f"{target_widget} cannot handle drop")
-                target_widget = target_widget.winfo_parent().nametowidget()
-                # print(f"moving up the hierarchy to parent = {target_widget}")
             else:
                 # print(f"{target_widget} cannot handle drop and has no way to move up the hierarchy")
                 # print("break")
@@ -832,10 +828,6 @@ def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler):
                 # print(f"{target_widget} cannot handle drop")
                 target_widget = target_widget.master
                 # print(f"moving up the hierarchy to master = {target_widget}")                
-            elif hasattr(target_widget, 'winfo_parent'):
-                # print(f"{target_widget} cannot handle drop")
-                target_widget = target_widget.winfo_parent().nametowidget()
-                # print(f"moving up the hierarchy to parent = {target_widget}")
             else:
                 # print(f"{target_widget} cannot handle drop and has no way to move up the hierarchy")
                 # print("break")
@@ -872,6 +864,12 @@ def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler):
 
     
 # --- widgets ---
+
+def get_to_root(widget):
+    while widget.master is not None:
+        widget = widget.master
+    return widget
+
 
 class EditableLabelWithCopy(tk.Frame):
     def __init__(self, master, initial_text="", info="", on_rename_callback=None, font=None, **kwargs):
@@ -1576,17 +1574,6 @@ class BreadCrumNavigator(ttk.Frame):
         self._press_y = 0
         self._active_button = None 
 
-        if isinstance(font, tkFont.Font):
-            self.btn_font = (
-                font.actual('family'),
-                font.actual('size'),
-                font.actual('weight') 
-            )
-        elif isinstance(font, (tuple, str)):
-            self.btn_font = font
-        else:
-            self.btn_font = ("TkDefaultFont", 10, "normal") 
-
     def set_path(self, path):
         if not os.path.isdir(path):
             print(f"Warning: Path '{path}' is not a directory. Cannot set breadcrumbs.")
@@ -1607,7 +1594,7 @@ class BreadCrumNavigator(ttk.Frame):
             btn_text = os.path.basename(path)
             if btn_text == '': 
                 btn_text = os.path.sep
-            btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=self.btn_font)
+            btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=get_to_root(self).main_font)
             btn.path = path
             btn.bind("<ButtonPress-1>", self._on_button_press)
             btn.bind("<ButtonRelease-1>", self._on_button_release)
@@ -1615,7 +1602,7 @@ class BreadCrumNavigator(ttk.Frame):
             btn_list.insert( 0, btn )
 
         btn_text="//"
-        btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=self.btn_font)
+        btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=get_to_root(self).main_font)
         btn.path = current_display_path
         btn.bind("<ButtonPress-1>", self._on_button_press)
         btn.bind("<ButtonRelease-1>", self._on_button_release)
@@ -1708,7 +1695,7 @@ class BreadCrumNavigator(ttk.Frame):
                 button,
                 None,
                 sorted_subdirs,
-                font=self.btn_font,
+                font=get_to_root(self).main_font,
                 x_pos=menu_x,
                 y_pos=menu_y
             )
