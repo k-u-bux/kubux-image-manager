@@ -273,7 +273,7 @@ def list_image_files_by_command(dir, cmd):
             listing.append( os.path.normpath(path) )
         else:
             listing.append( os.path.normpath( os.path.join(dir, path) ) )
-    log(f"choosing from {listing}")
+    log_debug(f"choosing from {listing}")
     return [path for path in listing if is_image_file(path) and is_file_below_dir(path, dir)]
     
     
@@ -297,7 +297,7 @@ def move_file_to_directory(file_path, target_dir_path):
             if os.path.isabs(link_target):
                 # If absolute, just move the symlink file itself.
                 shutil.move(file_path, new_path)
-                log(f"Moved absolute symlink '{item_name}' to '{target_dir_path}'")
+                log_debug(f"Moved absolute symlink '{item_name}' to '{target_dir_path}'")
             else:
                 # If relative, we must calculate the new relative path.
                 original_link_dir = os.path.dirname(os.path.abspath(file_path))
@@ -308,10 +308,10 @@ def move_file_to_directory(file_path, target_dir_path):
                 # Remove the old link and create a new one with the corrected path.
                 os.remove(file_path)
                 os.symlink(new_relative_path, new_path)
-                log(f"Moved relative symlink '{item_name}' to '{target_dir_path}' and updated its target.")
+                log_debug(f"Moved relative symlink '{item_name}' to '{target_dir_path}' and updated its target.")
         else:
             shutil.move(file_path, new_path)
-            log(f"Moved file '{item_name}' to '{target_dir_path}'")
+            log_debug(f"Moved file '{item_name}' to '{target_dir_path}'")
 
         return os.path.normpath( new_path )
         
@@ -421,7 +421,7 @@ def get_full_size_image(img_path):
         
 def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
     # if cache_key in PIL_CACHE:
-    #     log(f"found {img_path} @ {thumbnail_max_size} in cache with key {cache_key}.")
+    #     log_debug(f"found {img_path} @ {thumbnail_max_size} in cache with key {cache_key}.")
     #     PIL_CACHE.move_to_end(cache_key)
     #     return PIL_CACHE[cache_key]
 
@@ -436,7 +436,7 @@ def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
     if  os.path.exists(cached_thumbnail_path):
         try:
             pil_image_thumbnail = Image.open(cached_thumbnail_path)
-            log(f"found {img_path} at size {thumbnail_max_size} on disk.")
+            log_debug(f"found {img_path} at size {thumbnail_max_size} on disk.")
         except Exception as e:
             log_error(f"Error loading thumbnail for {img_path}: {e}")
 
