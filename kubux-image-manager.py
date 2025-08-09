@@ -78,6 +78,7 @@ def log_debug(msg):
     # print(msg)
     pass
 
+
 # --- probe font ---
 
 def get_gtk_ui_font():
@@ -200,6 +201,7 @@ def get_linux_system_ui_font_info():
 def get_linux_ui_font():
     font_name, font_size = get_linux_ui_font_info()
     return tkFont.Font(family=font_name, size=font_size)
+
     
 # --- list ops ---
 
@@ -361,6 +363,7 @@ class DirectoryWatcher():
     def change_dir(self, directory):
         self.stop_watching()
         self.start_watching(directory)
+
 
 # --- image stuff ---
 
@@ -2144,6 +2147,8 @@ def expand_wildcards(command_line: str, selected_files: list[str]) -> list[str]:
 
     return [ command_line.replace("*", quoted_args) ]
 
+
+# --- main ---
         
 class ImageManager(tk.Tk):
     def __init__(self):
