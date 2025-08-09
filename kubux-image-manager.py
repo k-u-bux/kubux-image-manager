@@ -1546,7 +1546,7 @@ class LongMenu(tk.Toplevel):
 
         
 class BreadCrumNavigator(ttk.Frame):
-    def __init__(self, master, on_navigate_callback=None,
+    def __init__(self, master, on_navigate_callback=None, font=None,
                  long_press_threshold_ms=400, drag_threshold_pixels=5):
         
         super().__init__(master)
@@ -1561,6 +1561,11 @@ class BreadCrumNavigator(ttk.Frame):
         self._press_x = 0
         self._press_y = 0
         self._active_button = None 
+
+        if font is None:
+            self.font = get_main_font(self)
+        else:
+            self.font = font
 
     def set_path(self, path):
         if not os.path.isdir(path):
@@ -1582,8 +1587,7 @@ class BreadCrumNavigator(ttk.Frame):
             btn_text = os.path.basename(path)
             if btn_text == '': 
                 btn_text = os.path.sep
-            btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, 
-                            font=get_main_font(self))
+            btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=self.font)
             btn.path = path
             btn.bind("<ButtonPress-1>", self._on_button_press)
             btn.bind("<ButtonRelease-1>", self._on_button_release)
@@ -1592,7 +1596,7 @@ class BreadCrumNavigator(ttk.Frame):
             btn_list.insert( 0, btn )
 
         btn_text="//"
-        btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=get_main_font(self))
+        btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=self.font)
         btn.path = current_display_path
         btn.bind("<ButtonPress-1>", self._on_button_press)
         btn.bind("<ButtonRelease-1>", self._on_button_release)
@@ -1686,7 +1690,7 @@ class BreadCrumNavigator(ttk.Frame):
                 button,
                 None,
                 sorted_subdirs,
-                font=get_main_font(self),
+                font=self.font,
                 x_pos=menu_x,
                 y_pos=menu_y,
                 n_lines = 15
