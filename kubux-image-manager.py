@@ -1435,7 +1435,8 @@ class DirectoryThumbnailGrid(tk.Frame):
 
 
 class LongMenu(tk.Toplevel):
-    def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None, pos="bottom", n_lines=12):
+    def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None, 
+                 pos="bottom", n_lines=12):
         super().__init__(master)
         self.withdraw()
         self.overrideredirect(True) # Remove window decorations (title bar, borders)
@@ -1447,18 +1448,24 @@ class LongMenu(tk.Toplevel):
 
         self._main_font = font if font else get_root(self).main_font
 
-        self._listbox_frame = ttk.Frame(self)
+        self._listbox_frame = tk.Frame(self)
         self._listbox_frame.pack(padx=10, pady=10, fill="both", expand=True)
 
+        max_length = 0
+        for line in self._options:
+            max_length = max( max_length, len(line) )
+        max_length = max_length + 5
         self._listbox = tk.Listbox(
             self._listbox_frame,
             selectmode=tk.SINGLE,
             font=self._main_font,
-            height=n_lines
+            height=n_lines,
+            width=max_length
         )
         self._listbox.pack(side="left", fill="both", expand=True)
 
-        self._scrollbar = tk.Scrollbar(self._listbox_frame, relief=SCROLLBAR_RELIEF, orient="vertical", command=self._listbox.yview)
+        self._scrollbar = tk.Scrollbar(self._listbox_frame, relief=SCROLLBAR_RELIEF, 
+                                       orient="vertical", command=self._listbox.yview)
         self._scrollbar.pack(side="right", fill="y")
         self._listbox.config(yscrollcommand=self._scrollbar.set)
 
@@ -1498,7 +1505,7 @@ class LongMenu(tk.Toplevel):
         if y_pos + popup_h > screen_height:
             y_pos = screen_height - popup_h - 5 # 5 pixels margin
             
-        self.geometry(f"+{int(x_pos)}+{int(y_pos)}")        # Center the window relative to its master
+        self.geometry(f"+{int(x_pos)}+{int(y_pos)}")
         self.deiconify()
         self.grab_set() 
 
@@ -1739,7 +1746,7 @@ class ImagePicker(tk.Toplevel):
             font=self.master.main_font,
             x_pos=menu_x,
             y_pos=menu_y,
-            pos="center"
+            pos="top"
         )
         selected_cmd = selector_dialog.result
         if selected_cmd:
