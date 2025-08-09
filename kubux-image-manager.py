@@ -2021,12 +2021,15 @@ class FlexibleTextField(tk.Frame):
         super().__init__(parent)
         self.command_callback = command_callback
         self._previous_index = None
-        self._font = font
+        if font is None:
+            self.font = get_main_font(self)
+        else:
+            self.font = font
         self._create_widgets()
         self._set_commands(commands)
 
     def _create_widgets(self):
-        self.text_area = tk.Text(self, wrap=tk.NONE, font=self._font, height=1, width=1)
+        self.text_area = tk.Text(self, wrap=tk.NONE, font=self.font, height=1, width=1)
         self.text_scroll = tk.Scrollbar(self, relief=SCROLLBAR_RELIEF, orient=tk.VERTICAL,
                                         command=self.text_area.yview)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
