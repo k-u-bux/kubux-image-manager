@@ -50,6 +50,8 @@ SUPPORTED_IMAGE_EXTENSIONS = (
 BUTTON_RELIEF="flat"
 SCALE_RELIEF="flat"
 SCROLLBAR_RELIEF="flat"
+ENTRY_RELIEF="flat"
+LABEL_RELIEF="flat"
 
 HOME_DIR = os.path.expanduser('~')
 CONFIG_DIR = os.path.join(HOME_DIR, ".config", "kubux-image-manager")
@@ -257,9 +259,9 @@ def list_image_files_by_command(dir, cmd):
             listing.append(path)
         else:
             listing.append( os.path.join(dir, path) )
+    print(f"choosing from {listing}")
     return [path for path in listing if is_image_file(path) and is_file_below_dir(path, dir)]
     
-
     
 def move_file_to_directory(file_path, target_dir_path):
     """
@@ -396,6 +398,7 @@ def uniq_file_id(img_path, width=-1):
     return hashlib.sha256(key.encode('utf-8')).hexdigest()
 
 PIL_CACHE = OrderedDict()
+TK_CACHE = OrderedDict()
 
 def get_full_size_image(img_path):
     cache_key = uniq_file_id(img_path)
@@ -413,10 +416,9 @@ def get_full_size_image(img_path):
         print(f"Error loading of for {img_path}: {e}")
         return None
         
-def get_or_make_thumbnail(img_path, thumbnail_max_size):
-    cache_key = uniq_file_id(img_path, thumbnail_max_size)
-
+def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
     if cache_key in PIL_CACHE:
+        print(f"found {img_path} @ {thumbnail_max_size} in cache with key {cache_key}.")
         return PIL_CACHE[cache_key]
 
     thumbnail_size_str = str(thumbnail_max_size)
@@ -431,6 +433,7 @@ def get_or_make_thumbnail(img_path, thumbnail_max_size):
     if  os.path.exists(cached_thumbnail_path):
         try:
             pil_image_thumbnail = Image.open(cached_thumbnail_path)
+            print(f"found {img_path} at size {thumbnail_max_size} on disk.")
             PIL_CACHE[cache_key] = pil_image_thumbnail
             return pil_image_thumbnail
         except Exception as e:
@@ -438,6 +441,7 @@ def get_or_make_thumbnail(img_path, thumbnail_max_size):
 
     # if we are here, caching was not successful
     try:
+        print(f"caching {img_path} at size {thumbnail_max_size}.")
         pil_image_thumbnail = resize_image( get_full_size_image(img_path), thumbnail_max_size, thumbnail_max_size )
         tmp_path = os.path.join(os.path.dirname(cached_thumbnail_path), "tmp-" + os.path.basename(cached_thumbnail_path))
         pil_image_thumbnail.save(tmp_path)
@@ -448,10 +452,27 @@ def get_or_make_thumbnail(img_path, thumbnail_max_size):
 
     return pil_image_thumbnail
 
+def get_or_make_pil(img_path, thumbnail_max_size):
+    cache_key = uniq_file_id(img_path, thumbnail_max_size)
+    print(f"cache_key for {img_path} @ {thumbnail_max_size} is {cache_key}")
+    return get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size)
+
 def make_tk_image( pil_image ):
     if pil_image.mode not in ("RGB", "RGBA", "L", "1"):
         pil_image = pil_image.convert("RGBA")
     return ImageTk.PhotoImage(pil_image)
+
+def get_or_make_tk_by_key(cache_key, img_path, thumbnail_max_size):
+    if cache_key in TK_CACHE:
+        return TK_CACHE[cache_key]
+    pil_image = get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size)
+    tk_image = make_tk_image( pil_image )
+    TK_CACHE[cache_key] = tk_image
+    return tk_image
+
+def get_or_make_tk(img_path, thumbnail_max_size):
+    cache_key = uniq_file_id(img_path, thumbnail_max_size)
+    return get_or_make_tk_by_key(cache_key, img_path, thumbnail_max_size)
 
 
 # --- dialogue box ---
@@ -639,6 +660,7 @@ def list_subdirectories(parent_directory_path):
     return subdirectories
 
 def list_relevant_files(dir_path):
+    # print(f"list relevant files for {dir_path}")
     file_list = list_image_files(dir_path)
     file_list.extend( list_image_files( get_parent_directory( dir_path ) ) )
     for subdir in list_subdirectories( dir_path ):
@@ -658,7 +680,6 @@ class BackgroundWorker:
                 self.barrier()
                 if self.keep_running and ( old_size == self.current_size ) and ( old_directory == self.current_dir ):
                     # print(f"background: {path_name}")
-                    get_or_make_thumbnail(path_name, old_size)
                     self.path_name_queue.put(path_name)
                 else:
                     break
@@ -676,6 +697,7 @@ class BackgroundWorker:
         self.block = threading.Event()
         self.worker.daemon = True
         self.worker.start()
+        self.pause()
         
     def pause(self):
         self.block.clear()
@@ -702,11 +724,11 @@ def is_image_file_name(file_name):
         
 def is_image_file(file_path):
     file_name = os.path.basename(file_path)
-    print(f"checking {file_path} / {file_name}")
+    # print(f"checking {file_path} / {file_name}")
     return os.path.isfile(file_path) and is_image_file_name(file_name)
         
 def list_image_files(directory_path):
-    print(f"list dir {directory_path}")
+    # print(f"list image files in {directory_path}")
     if not os.path.isdir(directory_path):
         return []
     full_paths = [os.path.join(directory_path,file) for file in os.listdir(directory_path)]
@@ -825,7 +847,7 @@ class EditableLabelWithCopy(tk.Frame):
         self.label.pack(side="left", padx=(0,5))
         
         self.text_var = tk.StringVar(value=initial_text)
-        self.entry = tk.Entry(self, textvariable=self.text_var, relief="flat", borderwidth=2)
+        self.entry = tk.Entry(self, textvariable=self.text_var, relief=ENTRY_RELIEF, borderwidth=2)
         if font:
             self.entry.configure(font=font)
         self.entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
@@ -1228,26 +1250,35 @@ class ImageViewer(tk.Toplevel):
             
 class DirectoryThumbnailGrid(tk.Frame):
     def __init__(self, master, directory_path="", list_cmd="ls", item_width=None, item_border_width=None,
-                 button_config_callback=None, **kwargs):
+                 static_button_config_callback=None, dynamic_button_config_callback=None, **kwargs):
         super().__init__(master, class_="kubux-image-manager", **kwargs)
         self._item_border_width = item_border_width
         self._directory_path = directory_path
         self._list_cmd = list_cmd
         self._item_width = item_width
-        self._button_config_callback = button_config_callback 
-        self._widget_cache = OrderedDict() # This is a dict: hash_str -> (tk.Button, ImageTk.PhotoImage)
+        self._static_button_config_callback = static_button_config_callback 
+        self._dynamic_button_config_callback = dynamic_button_config_callback 
+        self._widget_cache = OrderedDict() # This is a dict: hash_str -> tk.Button + .image @ button
         self._cache_size = 2000
-        self._active_widgets = {} # This is a dict: img_path -> (tk.Button, ImageTk.PhotoImage)
+        self._active_widgets = {} # This is a dict: img_path -> tk.Button + .image @ button
         self._last_known_width = -1
         self._files = []
         self.pack_propagate(True)
         self.grid_propagate(True)    
         self.bind("<Configure>", self._on_resize)
 
+        self._display_frame = tk.Frame(self)
+        self._display_frame.pack(side="top", expand=True, fill="both")
+        self._hidden_frame = tk.Frame(self, height=0)
+        self._hidden_frame.pack(side="top", expand=False)
+        self._hidden_frame.pack_propagate(False)
+
     def get_width_and_height(self):
+        print("enter: get_width_and_height")
         self.update_idletasks()
-        width = self.winfo_reqwidth()
-        height = self.winfo_reqheight()
+        width = self.display_frame.winfo_reqwidth()
+        height = self.display_frame.winfo_reqheight()
+        print("exit: get_width_and_height")
         return width, height
         
     def set_size_path_and_command(self, width, path, list_cmd):
@@ -1257,21 +1288,31 @@ class DirectoryThumbnailGrid(tk.Frame):
         return self.regrid()
 
             
-    def _get_button(self, img_path, width):
-       cache_key = uniq_file_id(img_path, width)
-       target_btn, tk_image = self._widget_cache.get(cache_key, (None, None))
-       
-       if target_btn is None:
-           target_btn = tk.Button(self, relief=BUTTON_RELIEF)
-           tk_image_ref = self._configure_button(target_btn, img_path)
-           assert not tk_image_ref is None
-           self._widget_cache[cache_key] = (target_btn, tk_image_ref)
-       else:
-           assert not tk_image is None
-           self._button_config_callback(target_btn, img_path, tk_image)
-           self._widget_cache.move_to_end(cache_key)
-           
-       return target_btn, tk_image
+    def _get_button(self, img_path, width, pre_cache=True):
+        cache_key = uniq_file_id(img_path, width)
+        btn = self._widget_cache.get(cache_key, None)
+        
+        if btn is None:
+            print(f"caching button widget for {img_path} @ {width}")
+            tk_image = get_or_make_tk_by_key(cache_key, img_path, width)
+            btn = tk.Button(self, relief=BUTTON_RELIEF)
+            btn.tk_image = tk_image
+            btn.config(image=tk_image)
+            self._widget_cache[cache_key] = btn
+            if self._static_button_config_callback:
+                self._static_button_config_callback(btn, img_path)
+            else:
+                btn.config(relief=BUTTON_RELIEF, borderwidth=0, cursor="arrow", command=None)
+            if pre_cache:
+                btn.pack(in_=self._hidden_frame)
+                self.update_idletasks()
+                btn.pack_forget()
+        else:
+            print(f"found button for for {img_path} @ {width} in the widget cache, key = {cache_key}")
+            self._widget_cache.move_to_end(cache_key)
+            
+        assert btn is not None
+        return btn
 
     def regrid(self):
         self._files = list_image_files_by_command(self._directory_path, self._list_cmd)
@@ -1279,14 +1320,16 @@ class DirectoryThumbnailGrid(tk.Frame):
         return self.redraw()
 
     def redraw(self):
-        for btn, _ in self._active_widgets.values():
+        for btn in self._active_widgets.values():
             assert btn is not None
             assert btn.winfo_exists()
             btn.grid_forget()
         self._active_widgets = {}
         for img_path in self._files:
-            target_btn, tk_image = self._get_button(img_path, self._item_width)
-            self._active_widgets[img_path] = (target_btn, tk_image)
+            btn = self._get_button(img_path, self._item_width, pre_cache=False)
+            if self._dynamic_button_config_callback: 
+                self._dynamic_button_config_callback(btn, img_path)
+            self._active_widgets[img_path] = btn
         return self._layout_the_grid()
 
     def _on_resize(self, event=None):
@@ -1321,7 +1364,7 @@ class DirectoryThumbnailGrid(tk.Frame):
             actual_tk_content_cols = actual_tk_total_cols
 
         if desired_content_cols_for_width != actual_tk_content_cols:
-            return self._layout_the_grid()
+            self._layout_the_grid()
         
         return self.get_width_and_height()
 
@@ -1335,6 +1378,7 @@ class DirectoryThumbnailGrid(tk.Frame):
         return calculated_cols
 
     def _layout_the_grid(self):
+        print("starting layout.")
         desired_content_cols_for_this_pass = self._calculate_columns(self.master.winfo_width())
         if desired_content_cols_for_this_pass == 0:
             desired_content_cols_for_this_pass = 1 
@@ -1345,57 +1389,38 @@ class DirectoryThumbnailGrid(tk.Frame):
         except TclError:
             pass
         for i in range(current_configured_cols):
-            self.grid_columnconfigure(i, weight=0)
+            self._display_frame.grid_columnconfigure(i, weight=0)
             
-        self.grid_columnconfigure(0, weight=1)  
-        self.grid_columnconfigure(desired_content_cols_for_this_pass + 1, weight=1) 
+        self._display_frame.grid_columnconfigure(0, weight=1)  
+        self._display_frame.grid_columnconfigure(desired_content_cols_for_this_pass + 1, weight=1) 
 
         # Widget Placement Loop
         for i, img_path in enumerate(self._active_widgets.keys()):
-            widget, _ = self._active_widgets.get(img_path) 
+            widget = self._active_widgets.get(img_path) 
             
             if widget is None or not widget.winfo_exists():
                 print(f"Warning: Attempted to layout a non-existent widget for path '{img_path}'. Skipping.")
                 continue
             row, col_idx = divmod(i, desired_content_cols_for_this_pass)
             grid_column = col_idx + 1 
-            widget.grid(row=row, column=grid_column, padx=2, pady=2) 
+            widget.grid(in_=self._display_frame, row=row, column=grid_column, padx=2, pady=2) 
         
         while len(self._widget_cache) > self._cache_size:
             self._widget_cache.popitem(last=False)
 
+        print("done with layout.")
+        return None
         return self.get_width_and_height()
     
-    def _configure_button(self, btn, img_path):
-        thumbnail_pil = get_or_make_thumbnail(img_path, self._item_width)
-        tk_thumbnail = None
-        if thumbnail_pil:
-            try:
-                tk_thumbnail = make_tk_image(thumbnail_pil)
-            except Exception as e:
-                print(f"Error converting PIL image to ImageTk.PhotoImage for {img_path}: {e}")
-        
-        if tk_thumbnail is not None:
-            btn.config(image=tk_thumbnail)
-        elif tk_thumbnail is None: 
-            btn.config(image=None)
-            
-        if self._button_config_callback:
-            self._button_config_callback(btn, img_path, tk_thumbnail)
-        else:
-            btn.config(relief="flat", borderwidth=0, cursor="arrow", command=None)
-            
-        return tk_thumbnail
-
     def destroy(self):
-        for btn, _ in self._active_widgets.values(): 
+        for btn in self._active_widgets.values(): 
             if btn is not None and btn.winfo_exists():
-                btn.image = None
+                btn.tk_image = None
                 btn.destroy() 
         self._active_widgets.clear()
-        for btn, _ in self._widget_cache.values():
+        for btn in self._widget_cache.values():
             if btn is not None and btn.winfo_exists():
-                btn.image = None
+                btn.tk_image = None
                 btn.destroy() 
         self._widget_cache.clear()
         super().destroy()
@@ -1656,6 +1681,7 @@ class BreadCrumNavigator(ttk.Frame):
 class ImagePicker(tk.Toplevel):
     def __init__(self, master, picker_info = None):
         super().__init__(master, class_="kubux-image-manager")
+        print(f"open file picker = {picker_info}")
         self._thumbnail_width = picker_info[0]
         self._image_dir = picker_info[1]
         self._list_cmd = picker_info[2]
@@ -1666,13 +1692,12 @@ class ImagePicker(tk.Toplevel):
         self.geometry(self._geometry)
         self._create_widgets()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.after(50, self._cache_widget)
+        self.after(5000, self._cache_widget)
 
     def _cache_widget(self):
         try:
             path_name = self.background_worker.path_name_queue.get_nowait()
             self._gallery_grid._get_button(path_name, self._thumbnail_width)
-            # print(f"created button for {path_name} at size {self._thumbnail_max_size}")
         except queue.Empty:
             pass
         self.after(50, self._cache_widget)
@@ -1717,10 +1742,12 @@ class ImagePicker(tk.Toplevel):
     def _regrid(self):
         self.update_idletasks()
         self._gallery_grid.set_size_path_and_command(self._thumbnail_width, self._image_dir, self._list_cmd)
+        self.update_idletasks()
 
     def _redraw(self):
         self.update_idletasks()
         self._gallery_grid.redraw()
+        self.update_idletasks()
        
     def _handle_drop(self, source_button, target_picker):
         self.master.move_selected_files_to_directory(source_button.img_path, target_picker._image_dir)
@@ -1761,9 +1788,11 @@ class ImagePicker(tk.Toplevel):
             self._gallery_grid = DirectoryThumbnailGrid(
                 self._gallery_canvas,
                 directory_path=self._image_dir,
+                list_cmd=self._list_cmd,
                 item_width=self._thumbnail_width,
                 item_border_width=6,
-                button_config_callback=self._configure_picker_button,
+                static_button_config_callback=self._static_configure_picker_button,
+                dynamic_button_config_callback=self._dynamic_configure_picker_button,
                 bg=self.cget("background")
             )
             self._gallery_canvas.create_window((0, 0), window=self._gallery_grid, anchor="nw")
@@ -1810,8 +1839,12 @@ class ImagePicker(tk.Toplevel):
             tk.Button(self._bot_frame, font=self.master.main_font, text="Desel.", relief=BUTTON_RELIEF, command=self._on_deselect).pack(side="right", padx=(24, 2))
 
         self.watcher.start_watching(self._image_dir)
-        self._browse_directory(self._image_dir)
         self._gallery_canvas.yview_moveto(0.0)
+        self.background_worker.run( self._image_dir, self._thumbnail_width )
+        self.breadcrumb_nav.set_path( self._image_dir )
+        self._gallery_grid.regrid()
+        # self._regrid()
+        # self._adjust_gallery_scroll_position()
         self.after(100, self.focus_set)
 
         bind_drop(self, self._handle_drop)
@@ -1850,10 +1883,10 @@ class ImagePicker(tk.Toplevel):
         ghost.attributes('-alpha', 0.7)
         if files:
             ghost_label = tk.Label(ghost, text=f"move {len(files)} files from directory {base} selected", wraplength=300,
-                                   font=self.master.main_font, bg="light green", relief="flat", padx=10, pady=5)
+                                   font=self.master.main_font, bg="light green", relief=LABEL_RELIEF, padx=10, pady=5)
         else:
             ghost_label = tk.Label(ghost, text=f"NO FILES SELECTED in {base}", wraplength=300,
-                                   font=self.master.main_font, bg="red", relief="flat", padx=10, pady=5)
+                                   font=self.master.main_font, bg="red", relief=LABEL_RELIEF, padx=10, pady=5)
         ghost_label.pack()
         ghost.geometry(f"+{x - 10}+{y - 10}")
         return ghost
@@ -1871,18 +1904,20 @@ class ImagePicker(tk.Toplevel):
         args = [ widget.img_path ]
         self.master.execute_current_command_with_args( args )
         
-    def _configure_picker_button(self, btn, img_path, tk_thumbnail):
+    def _static_configure_picker_button(self, btn, img_path):
+        pass
+
+    def _dynamic_configure_picker_button(self, btn, img_path):
         btn.img_path = img_path
         btn.config(
             cursor="hand2", 
-            relief="flat", 
+            relief=BUTTON_RELIEF, 
             borderwidth=0,
             highlightthickness=3,
             bg=self.cget("background")
         )
         bind_click_or_drag(btn, self._make_ghost, self._toggle_selection)
         bind_right_click_or_drag(btn, self._make_right_ghost, self._exec_cmd_for_image)
-        
         if img_path in self.master.selected_files:
             btn.config(highlightbackground="blue")
         else:
@@ -1906,6 +1941,7 @@ class ImagePicker(tk.Toplevel):
 
 
     def _browse_directory(self, path):
+        print("enter: _browse_directory.")
         if not os.path.isdir(path):
             custom_message_dialog(parent=self, title="Error", message=f"Invalid directory: {path}", font=self.master.main_font)
             return
@@ -1915,9 +1951,9 @@ class ImagePicker(tk.Toplevel):
         self.background_worker.run( path, self._thumbnail_width )
             
         self.breadcrumb_nav.set_path(path)
-        self.update_idletasks()
         self._regrid()
         self._adjust_gallery_scroll_position()
+        print("exit: _browse_directory.")
 
     def _toggle_selection(self, button):
         self.master.toggle_selection(button.img_path)
