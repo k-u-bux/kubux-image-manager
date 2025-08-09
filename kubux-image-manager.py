@@ -843,6 +843,9 @@ def get_to_root(widget):
         widget = widget.master
     return widget
 
+def get_main_font(widget):
+    return get_to_root(widget).main_font
+
 
 class EditableLabelWithCopy(tk.Frame):
     def __init__(self, master, initial_text="", info="", on_rename_callback=None, font=None, **kwargs):
@@ -961,7 +964,7 @@ class ImageViewer(tk.Toplevel):
             initial_text=self.file_name,
             info=f"{w}x{h}",
             on_rename_callback=self._rename_current_image,
-            font=self.master.main_font
+            font=get_main_font(self)
         )
         self.filename_widget.pack(side="bottom", fill="x", padx=5, pady=(0, 5))
 
@@ -1447,7 +1450,7 @@ class LongMenu(tk.Toplevel):
         self.result = default_option
         self._options = other_options
 
-        self._main_font = font if font else get_root(self).main_font
+        self._main_font = font if font else get_main_font(self)
 
         self._listbox_frame = tk.Frame(self)
         self._listbox_frame.pack(padx=10, pady=10, fill="both", expand=True)
@@ -1580,7 +1583,7 @@ class BreadCrumNavigator(ttk.Frame):
             if btn_text == '': 
                 btn_text = os.path.sep
             btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, 
-                            font=get_to_root(self).main_font)
+                            font=get_main_font(self))
             btn.path = path
             btn.bind("<ButtonPress-1>", self._on_button_press)
             btn.bind("<ButtonRelease-1>", self._on_button_release)
@@ -1589,7 +1592,7 @@ class BreadCrumNavigator(ttk.Frame):
             btn_list.insert( 0, btn )
 
         btn_text="//"
-        btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=get_to_root(self).main_font)
+        btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=get_main_font(self))
         btn.path = current_display_path
         btn.bind("<ButtonPress-1>", self._on_button_press)
         btn.bind("<ButtonRelease-1>", self._on_button_release)
@@ -1683,7 +1686,7 @@ class BreadCrumNavigator(ttk.Frame):
                 button,
                 None,
                 sorted_subdirs,
-                font=get_to_root(self).main_font,
+                font=get_main_font(self),
                 x_pos=menu_x,
                 y_pos=menu_y,
                 n_lines = 15
@@ -1745,7 +1748,7 @@ class ImagePicker(tk.Toplevel):
             self,
             None,
             self.master.list_commands,
-            font=self.master.main_font,
+            font=get_main_font(self),
             x_pos=menu_x,
             y_pos=menu_y,
             pos="top"
@@ -1784,9 +1787,9 @@ class ImagePicker(tk.Toplevel):
             )
             self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
             # Right side: Clone and Close buttons, thumnail slider
-            tk.Button(self._top_frame, font=self.master.main_font, text="Close", 
+            tk.Button(self._top_frame, font=get_main_font(self), text="Close", 
                       relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
-            tk.Button(self._top_frame, font=self.master.main_font, text="Clone", 
+            tk.Button(self._top_frame, font=get_main_font(self), text="Clone", 
                       relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
         
         # Thumbnail Display Area (Canvas and Scrollbar)
@@ -1829,7 +1832,7 @@ class ImagePicker(tk.Toplevel):
         self._bot_frame.pack(fill="x", padx=5, pady=5)
         if True:
             # thumbnail sizes (left)
-            dummy_C_label = tk.Label(self._bot_frame, text="Size:", font=self.master.main_font)
+            dummy_C_label = tk.Label(self._bot_frame, text="Size:", font=get_main_font(self))
             dummy_C_label.pack(side="left", padx=(2,12))
             dummy_C_frame = tk.Frame(self._bot_frame)
             dummy_C_frame.pack(side="left", expand=False, fill="x")
@@ -1841,9 +1844,9 @@ class ImagePicker(tk.Toplevel):
             self.thumbnail_slider.config(command=self._update_thumbnail_width)
             self.thumbnail_slider.pack(anchor="e")
             # list command (left)
-            dummy_D_label = tk.Label(self._bot_frame, text="Show:", font=self.master.main_font)
+            dummy_D_label = tk.Label(self._bot_frame, text="Show:", font=get_main_font(self))
             dummy_D_label.pack(side="left", padx=(36,12))
-            self.list_cmd_entry = tk.Entry(self._bot_frame, font=self.master.main_font)
+            self.list_cmd_entry = tk.Entry(self._bot_frame, font=get_main_font(self))
             self.list_cmd_entry.insert(0, self._list_cmd)
             self.list_cmd_entry.pack(side="left", fill="x", expand=True, padx=(0,12))
             self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
@@ -1851,8 +1854,10 @@ class ImagePicker(tk.Toplevel):
             # self.list_cmd_entry.bind("<Shift-Return>", self._show_list_cmd_menu)
             self.list_cmd_entry.bind("<Leave>", lambda event: self.focus_set())
             # Select and Deselect All buttons (right)
-            tk.Button(self._bot_frame, font=self.master.main_font, text="Sel. All", relief=BUTTON_RELIEF, command=self._on_select).pack(side="right", padx=(24, 2))
-            tk.Button(self._bot_frame, font=self.master.main_font, text="Desel.", relief=BUTTON_RELIEF, command=self._on_deselect).pack(side="right", padx=(24, 2))
+            tk.Button(self._bot_frame, font=get_main_font(self), text="Sel. All",
+                      relief=BUTTON_RELIEF, command=self._on_select).pack(side="right", padx=(24, 2))
+            tk.Button(self._bot_frame, font=get_main_font(self), text="Desel.", 
+                      relief=BUTTON_RELIEF, command=self._on_deselect).pack(side="right", padx=(24, 2))
 
         self.watcher.start_watching(self._image_dir)
         self._gallery_canvas.yview_moveto(0.0)
@@ -1898,11 +1903,12 @@ class ImagePicker(tk.Toplevel):
         ghost.overrideredirect(True)
         ghost.attributes('-alpha', 0.7)
         if files:
-            ghost_label = tk.Label(ghost, text=f"move {len(files)} files from directory {base} selected", wraplength=300,
-                                   font=self.master.main_font, bg="light green", relief=LABEL_RELIEF, padx=10, pady=5)
+            ghost_label = tk.Label(ghost, text=f"move {len(files)} files from directory {base} selected", 
+                                   wraplength=300, font=get_main_font(self), bg="light green", 
+                                   relief=LABEL_RELIEF, padx=10, pady=5)
         else:
             ghost_label = tk.Label(ghost, text=f"NO FILES SELECTED in {base}", wraplength=300,
-                                   font=self.master.main_font, bg="red", relief=LABEL_RELIEF, padx=10, pady=5)
+                                   font=get_main_font(self), bg="red", relief=LABEL_RELIEF, padx=10, pady=5)
         ghost_label.pack()
         ghost.geometry(f"+{x - 10}+{y - 10}")
         return ghost
@@ -1911,7 +1917,8 @@ class ImagePicker(tk.Toplevel):
         ghost = tk.Toplevel(self.master)
         ghost.overrideredirect(True)
         ghost.attributes('-alpha', 0.7)
-        ghost_label = tk.Label(ghost, image=button['image'], bg=button['bg'], relief=button['relief'], padx=10, pady=5)
+        ghost_label = tk.Label(ghost, image=button['image'], bg=button['bg'], 
+                               relief=button['relief'], padx=10, pady=5)
         ghost_label.pack()
         ghost.geometry(f"+{x - 10}+{y - 10}")
         return ghost
@@ -1959,7 +1966,8 @@ class ImagePicker(tk.Toplevel):
     def _browse_directory(self, path):
         log_debug("enter: _browse_directory.")
         if not os.path.isdir(path):
-            custom_message_dialog(parent=self, title="Error", message=f"Invalid directory: {path}", font=self.master.main_font)
+            custom_message_dialog(parent=self, title="Error", message=f"Invalid directory: {path}", 
+                                  font=get_main_font(self))
             return
         
         self._image_dir = path
@@ -1996,9 +2004,12 @@ class ImagePicker(tk.Toplevel):
         widget.bind("<Button-5>", lambda e: self._on_mousewheel(e), add="+")
 
     def _on_mousewheel(self, event):
-        if platform.system() == "Windows": self._gallery_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        elif event.num == 4: self._gallery_canvas.yview_scroll(-1, "units")
-        elif event.num == 5: self._gallery_canvas.yview_scroll(1, "units")
+        if platform.system() == "Windows": 
+            self._gallery_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif event.num == 4: 
+            self._gallery_canvas.yview_scroll(-1, "units")
+        elif event.num == 5: 
+            self._gallery_canvas.yview_scroll(1, "units")
 
 
 class FlexibleTextField(tk.Frame):
@@ -2012,7 +2023,8 @@ class FlexibleTextField(tk.Frame):
 
     def _create_widgets(self):
         self.text_area = tk.Text(self, wrap=tk.NONE, font=self._font, height=1, width=1)
-        self.text_scroll = tk.Scrollbar(self, relief=SCROLLBAR_RELIEF, orient=tk.VERTICAL, command=self.text_area.yview)
+        self.text_scroll = tk.Scrollbar(self, relief=SCROLLBAR_RELIEF, orient=tk.VERTICAL,
+                                        command=self.text_area.yview)
         self.text_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.text_area.config(yscrollcommand=self.text_scroll.set)
@@ -2438,7 +2450,10 @@ class ImageManager(tk.Tk):
         log_debug(f"opening directory {directory_path}")
         if self.open_picker_dialogs:
             self.new_picker_info = self.open_picker_dialogs[-1].get_picker_info()
-        self.open_picker_dialog([ self.new_picker_info[0], directory_path, self.new_picker_info[2], self.new_picker_info[3] ])
+        self.open_picker_dialog([ self.new_picker_info[0], 
+                                  directory_path, 
+                                  self.new_picker_info[2], 
+                                  self.new_picker_info[3] ])
 
     def set_wp(self, path):
         try:
