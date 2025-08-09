@@ -397,6 +397,8 @@ def uniq_file_id(img_path, width=-1):
     key = f"{real_path}_{width}_{mtime}"
     return hashlib.sha256(key.encode('utf-8')).hexdigest()
 
+CACHE_SIZE = 10000
+
 PIL_CACHE = OrderedDict()
 TK_CACHE = OrderedDict()
 
@@ -408,23 +410,23 @@ def get_full_size_image(img_path):
     try:
         full_image = Image.open(img_path)
         PIL_CACHE[cache_key] = full_image
-        if len( PIL_CACHE ) > 2000:
+        if len( PIL_CACHE ) > CACHE_SIZE:
             PIL_CACHE.popitem(last=False)
-            assert len( PIL_CACHE ) == 2000
+            assert len( PIL_CACHE ) == CACHE_SIZE
         return full_image
     except Exception as e:
         print(f"Error loading of for {img_path}: {e}")
         return None
         
 def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
-    if cache_key in PIL_CACHE:
-        print(f"found {img_path} @ {thumbnail_max_size} in cache with key {cache_key}.")
-        return PIL_CACHE[cache_key]
+    # if cache_key in PIL_CACHE:
+    #     print(f"found {img_path} @ {thumbnail_max_size} in cache with key {cache_key}.")
+    #     PIL_CACHE.move_to_end(cache_key)
+    #     return PIL_CACHE[cache_key]
 
     thumbnail_size_str = str(thumbnail_max_size)
     thumbnail_cache_subdir = os.path.join(THUMBNAIL_CACHE_ROOT, thumbnail_size_str)
     os.makedirs(thumbnail_cache_subdir, exist_ok=True)
-
     cached_thumbnail_path = os.path.join(thumbnail_cache_subdir, f"{cache_key}.png")
 
     pil_image_thumbnail = None
@@ -434,22 +436,24 @@ def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
         try:
             pil_image_thumbnail = Image.open(cached_thumbnail_path)
             print(f"found {img_path} at size {thumbnail_max_size} on disk.")
-            PIL_CACHE[cache_key] = pil_image_thumbnail
-            return pil_image_thumbnail
         except Exception as e:
             print(f"Error loading thumbnail for {img_path}: {e}")
 
-    # if we are here, caching was not successful
-    try:
-        print(f"caching {img_path} at size {thumbnail_max_size}.")
-        pil_image_thumbnail = resize_image( get_full_size_image(img_path), thumbnail_max_size, thumbnail_max_size )
-        tmp_path = os.path.join(os.path.dirname(cached_thumbnail_path), "tmp-" + os.path.basename(cached_thumbnail_path))
-        pil_image_thumbnail.save(tmp_path)
-        os.replace(tmp_path, cached_thumbnail_path)
-        PIL_CACHE[cache_key] = pil_image_thumbnail
-    except Exception as e:
-        print(f"Error loading of / creating thumbnail for {img_path}: {e}")
+    if pil_image_thumbnail is None:
+        try:
+            pil_image_thumbnail = resize_image( get_full_size_image(img_path), thumbnail_max_size, thumbnail_max_size )
+            tmp_path = os.path.join(os.path.dirname(cached_thumbnail_path), "tmp-" + os.path.basename(cached_thumbnail_path))
+            pil_image_thumbnail.save(tmp_path)
+            os.replace(tmp_path, cached_thumbnail_path)
+        except Exception as e:
+            print(f"Error creating thumbnail for {img_path}: {e}")
 
+    # print(f"caching image {img_path} @ {thumbnail_max_size} with key {cache_key}.")
+    # PIL_CACHE[cache_key] = pil_image_thumbnail
+    # if len( PIL_CACHE ) > CACHE_SIZE:
+    #     PIL_CACHE.popitem(last=False)
+    #     assert len( PIL_CACHE ) == CACHE_SIZE
+   
     return pil_image_thumbnail
 
 def get_or_make_pil(img_path, thumbnail_max_size):
@@ -464,12 +468,16 @@ def make_tk_image( pil_image ):
 
 def get_or_make_tk_by_key(cache_key, img_path, thumbnail_max_size):
     if cache_key in TK_CACHE:
+        TK_CACHE.move_to_end(cache_key)
         return TK_CACHE[cache_key]
     pil_image = get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size)
     tk_image = make_tk_image( pil_image )
     TK_CACHE[cache_key] = tk_image
+    if len( TK_CACHE ) > CACHE_SIZE:
+        TK_CACHE.popitem(last=False)
+        assert len( PIL_CACHE ) == CACHE_SIZE
     return tk_image
-
+     
 def get_or_make_tk(img_path, thumbnail_max_size):
     cache_key = uniq_file_id(img_path, thumbnail_max_size)
     return get_or_make_tk_by_key(cache_key, img_path, thumbnail_max_size)
@@ -1310,7 +1318,7 @@ class DirectoryThumbnailGrid(tk.Frame):
         else:
             print(f"found button for for {img_path} @ {width} in the widget cache, key = {cache_key}")
             self._widget_cache.move_to_end(cache_key)
-            
+        
         assert btn is not None
         return btn
 
