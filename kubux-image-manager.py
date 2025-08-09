@@ -1796,7 +1796,7 @@ class ImagePicker(tk.Toplevel):
             self.thumbnail_slider.config(command=self._update_thumbnail_width)
             self.thumbnail_slider.pack(anchor="e")
             # list command (left)
-            dummy_D_label = tk.Label(self._bot_frame, text="Filter:", font=self.master.main_font)
+            dummy_D_label = tk.Label(self._bot_frame, text="Show:", font=self.master.main_font)
             dummy_D_label.pack(side="left", padx=(36,12))
             self.list_cmd_entry = tk.Entry(self._bot_frame, font=self.master.main_font)
             self.list_cmd_entry.insert(0, self._list_cmd)
