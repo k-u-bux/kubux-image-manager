@@ -2249,7 +2249,6 @@ class ImageManager(tk.Tk):
                                                     command_callback=self.execute_command,
                                                     font = self.main_font )
             self.command_field.pack(side="top", fill="both", expand=True, padx=5, pady=5 )
-
             self.controll_frame = tk.Frame( self.main_container )
             self.controll_frame.pack( side="bottom", fill="x", expand=False, padx=5, pady=5 )
             if True:
@@ -2275,8 +2274,8 @@ class ImageManager(tk.Tk):
                 self.ui_slider.pack(anchor="e")
                 dummy_C_label = tk.Label(self.controll_frame, text="UI:", font=self.main_font)
                 dummy_C_label.pack(side="right", padx=(12,0))
-
         self.update_button_status()
+        self.update_idletasks()
 
     def move_file_to_directory(self, file_path, target_dir):
         log_debug(f"move file {file_path} to directory {target_dir}")
