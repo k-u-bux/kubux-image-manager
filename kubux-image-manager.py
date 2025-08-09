@@ -75,7 +75,7 @@ def log_error(msg):
     pass
 
 def log_debug(msg):
-    print(msg)
+    # print(msg)
     pass
 
 # --- probe font ---
@@ -2290,30 +2290,32 @@ class ImageManager(tk.Tk):
         for cmd in to_do:
             log_debug(f"executing {cmd}")
             if  ( files := strip_prefix("Open:", cmd) ) is not None:
-                log_debug(f"execute as an internal command: Open: {files}")
+                log_action(f"execute as an internal command: Open: {files}")
                 path_list = shlex.split( files )
                 for path in path_list:
                     self.open_path(path)
             elif  ( files := strip_prefix("Fullscreen:", cmd) ) is not None:
-                log_debug(f"execute as an internal command: Fullscreen: {files}")
+                log_action(f"execute as an internal command: Fullscreen: {files}")
                 path_list = shlex.split( files )
                 for path in path_list:
                     self.fullscreen_path(path)
             elif ( files := strip_prefix("SetWP:", cmd) ) is not None:
-                log_debug(f"execute as an internal command: SetWP: {files}")
+                log_action(f"execute as an internal command: SetWP: {files}")
                 path_list = shlex.split( files )
                 if path_list:
                     self.set_wp(path_list[-1])
             elif ( list_cmd := strip_prefix("Select:", cmd) ) is not None:
+                log_action(f"execute as an internal command: Select: {files}")
                 status_change = True
                 file_list = filter_for_files(list_cmd)
                 for file in file_list: self.select_file(file)
             elif ( list_cmd := strip_prefix("Deselect:", cmd) ) is not None:
+                log_action(f"execute as an internal command: Deselect: {files}")
                 status_change = True
                 file_list = filter_for_files(list_cmd)
                 for file in file_list: self.unselect_file(file)
             else:
-                log_debug(f"execute as a shell command: {cmd}")
+                log_action(f"execute as a shell command: {cmd}")
                 execute_shell_command(cmd)
         if status_change:
             self.broadcast_selection_change()
