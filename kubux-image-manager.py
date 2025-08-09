@@ -1017,7 +1017,7 @@ class ImageViewer(tk.Toplevel):
 
     def get_image_info(self):
         self._geometry = self.geometry()
-        return self.image_path, self._geometry
+        return self.image_path, self._geometry, self._fullscreen
         
     def set_screen_mode(self, is_fullscreen):
         self.attributes('-fullscreen', is_fullscreen)
