@@ -256,9 +256,9 @@ def list_image_files_by_command(dir, cmd):
     listing = []
     for path in raw_output:
         if os.path.isabs(path):
-            listing.append(path)
+            listing.append( os.path.normpath(path) )
         else:
-            listing.append( os.path.join(dir, path) )
+            listing.append( os.path.normpath( os.path.join(dir, path) ) )
     print(f"choosing from {listing}")
     return [path for path in listing if is_image_file(path) and is_file_below_dir(path, dir)]
     
