@@ -1276,8 +1276,8 @@ class DirectoryThumbnailGrid(tk.Frame):
     def get_width_and_height(self):
         print("enter: get_width_and_height")
         self.update_idletasks()
-        width = self.display_frame.winfo_reqwidth()
-        height = self.display_frame.winfo_reqheight()
+        width = self.winfo_reqwidth()
+        height = self.winfo_reqheight()
         print("exit: get_width_and_height")
         return width, height
         
@@ -1692,7 +1692,7 @@ class ImagePicker(tk.Toplevel):
         self.geometry(self._geometry)
         self._create_widgets()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
-        self.after(5000, self._cache_widget)
+        self.after(500, self._cache_widget)
 
     def _cache_widget(self):
         try:
