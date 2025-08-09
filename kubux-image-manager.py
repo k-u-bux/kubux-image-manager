@@ -1543,7 +1543,7 @@ class LongMenu(tk.Toplevel):
 
         
 class BreadCrumNavigator(ttk.Frame):
-    def __init__(self, master, on_navigate_callback=None, font=None,
+    def __init__(self, master, on_navigate_callback=None,
                  long_press_threshold_ms=400, drag_threshold_pixels=5):
         
         super().__init__(master)
@@ -1579,7 +1579,8 @@ class BreadCrumNavigator(ttk.Frame):
             btn_text = os.path.basename(path)
             if btn_text == '': 
                 btn_text = os.path.sep
-            btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, font=get_to_root(self).main_font)
+            btn = tk.Button(self, text=btn_text, relief=BUTTON_RELIEF, 
+                            font=get_to_root(self).main_font)
             btn.path = path
             btn.bind("<ButtonPress-1>", self._on_button_press)
             btn.bind("<ButtonRelease-1>", self._on_button_release)
@@ -1779,8 +1780,7 @@ class ImagePicker(tk.Toplevel):
             # Left side: Breadcrumb Navigation
             self.breadcrumb_nav = BreadCrumNavigator(
                 self._top_frame, # Parent is the _control_frame
-                on_navigate_callback=self._browse_directory, # This callback will update the grid and breadcrumbs
-                font=self.master.main_font, # Use the app's font
+                on_navigate_callback=self._browse_directory # This callback will update the grid and breadcrumbs
             )
             self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
             # Right side: Clone and Close buttons, thumnail slider
