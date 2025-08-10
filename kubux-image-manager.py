@@ -41,11 +41,16 @@ from watchdog.observers import Observer
 import requests
 from PIL import Image, ImageTk
 
+
+# --- configuration ---
+
 SUPPORTED_IMAGE_EXTENSIONS = (
     '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tif', '.tiff', '.webp',
     '.ico', '.icns', '.avif', '.dds', '.msp', '.pcx', '.ppm',
     '.pbm', '.pgm', '.sgi', '.tga', '.xbm', '.xpm'
 )
+
+CACHE_SIZE = 10000
 
 BUTTON_RELIEF="flat"
 SCALE_RELIEF="flat"
@@ -63,6 +68,7 @@ APP_SETTINGS_FILE = os.path.join(CONFIG_DIR, "app_settings.json")
 
 os.makedirs(THUMBNAIL_CACHE_ROOT, exist_ok=True)
 os.makedirs(CONFIG_DIR, exist_ok=True)
+
 
 # --- logging ---
 
@@ -365,7 +371,7 @@ class DirectoryWatcher():
         self.start_watching(directory)
 
 
-# --- image stuff ---
+# --- image stuff / caching ---
 
 def resize_image(image, target_width, target_height):
     original_width, original_height = image.size
@@ -401,10 +407,8 @@ def uniq_file_id(img_path, width=-1):
     key = f"{real_path}_{width}_{mtime}"
     return hashlib.sha256(key.encode('utf-8')).hexdigest()
 
-CACHE_SIZE = 10000
-
-PIL_CACHE = OrderedDict()
-TK_CACHE = OrderedDict()
+PIL_CACHE = OrderedDict() # cache for full size pictures
+TK_CACHE = OrderedDict()  # cache for tk-images of thumbnails, the pil is cached on disk
 
 def get_full_size_image(img_path):
     cache_key = uniq_file_id(img_path)
@@ -423,11 +427,6 @@ def get_full_size_image(img_path):
         return None
         
 def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
-    # if cache_key in PIL_CACHE:
-    #     log_debug(f"found {img_path} @ {thumbnail_max_size} in cache with key {cache_key}.")
-    #     PIL_CACHE.move_to_end(cache_key)
-    #     return PIL_CACHE[cache_key]
-
     thumbnail_size_str = str(thumbnail_max_size)
     thumbnail_cache_subdir = os.path.join(THUMBNAIL_CACHE_ROOT, thumbnail_size_str)
     os.makedirs(thumbnail_cache_subdir, exist_ok=True)
@@ -452,12 +451,6 @@ def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
         except Exception as e:
             log_error(f"Error creating thumbnail for {img_path}: {e}")
 
-    # log_debug(f"caching image {img_path} @ {thumbnail_max_size} with key {cache_key}.")
-    # PIL_CACHE[cache_key] = pil_image_thumbnail
-    # if len( PIL_CACHE ) > CACHE_SIZE:
-    #     PIL_CACHE.popitem(last=False)
-    #     assert len( PIL_CACHE ) == CACHE_SIZE
-   
     return pil_image_thumbnail
 
 def get_or_make_pil(img_path, thumbnail_max_size):
@@ -496,17 +489,14 @@ def custom_message_dialog(parent, title, message, font=("Arial", 12)):
     dialog = tk.Toplevel(parent)
     dialog.title(title)
     dialog.transient(parent)  # Set to be on top of the parent window
-    
-    # Calculate position to center the dialog on parent
+
     x = parent.winfo_rootx() + parent.winfo_width() // 2 - 200
     y = parent.winfo_rooty() + parent.winfo_height() // 2 - 100
     dialog.geometry(f"400x300+{x}+{y}")
-    
-    # Message area
+
     msg_frame = ttk.Frame(dialog, padding=20)
     msg_frame.pack(fill=tk.BOTH, expand=True)
     
-    # Text widget with scrollbar for the message
     text_widget = tk.Text(msg_frame, wrap=tk.WORD, font=font, 
                           highlightthickness=0, borderwidth=0)
     scrollbar = tk.Scrollbar(msg_frame, orient="vertical", relief=SCROLLBAR_RELIEF,
@@ -516,22 +506,18 @@ def custom_message_dialog(parent, title, message, font=("Arial", 12)):
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
     text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     
-    # Insert the message text
     text_widget.insert(tk.END, message)
     text_widget.configure(state="disabled")  # Make read-only
     
-    # OK button
     button_frame = ttk.Frame(dialog, padding=10)
     button_frame.pack(fill=tk.X)
     ok_button = ttk.Button(button_frame, text="OK", 
                           command=dialog.destroy, width=10)
     ok_button.pack(side=tk.RIGHT, padx=5)
     
-    # Center dialog on screen
     dialog.update_idletasks()
     dialog.grab_set()  # Modal: user must interact with this window
     
-    # Set focus and wait for window to close
     ok_button.focus_set()
     dialog.wait_window()
 
@@ -539,15 +525,8 @@ def custom_message_dialog(parent, title, message, font=("Arial", 12)):
 # --- Wallpaper Setting Functions (Platform-Specific) ---
 
 def set_wallpaper(image_path, error_callback=fallback_show_error):
-    """
-    Set the wallpaper on Linux systems with support for multiple desktop environments.
-    
-    Args:
-        image_path: Path to the image file
-        
-    Returns:
-        bool: True if wallpaper was successfully set, False otherwise
-    """
+    # returns True if the WP was set and False if not
+
     if platform.system() != "Linux":
         error_callback("Unsupported OS", f"Wallpaper setting not supported on {platform.system()}.")
         return False
@@ -654,6 +633,8 @@ def set_wallpaper(image_path, error_callback=fallback_show_error):
         error_callback("Wallpaper Error", f"Failed to set wallpaper: {e}")
         return False
 
+
+# --- predictive preloading of thumbnails ---
     
 def get_parent_directory(path):
     return os.path.dirname(path)
@@ -846,7 +827,7 @@ def get_to_root(widget):
         widget = widget.master
     return widget
 
-def get_main_font(widget):
+def get_font(widget):
     return get_to_root(widget).main_font
 
 
@@ -967,7 +948,7 @@ class ImageViewer(tk.Toplevel):
             initial_text=self.file_name,
             info=f"{w}x{h}",
             on_rename_callback=self._rename_current_image,
-            font=get_main_font(self)
+            font=get_font(self)
         )
         self.filename_widget.pack(side="bottom", fill="x", padx=5, pady=(0, 5))
 
@@ -1453,7 +1434,7 @@ class LongMenu(tk.Toplevel):
         self.result = default_option
         self._options = other_options
 
-        self._main_font = font if font else get_main_font(self)
+        self._main_font = font if font else get_font(self)
 
         self._listbox_frame = tk.Frame(self)
         self._listbox_frame.pack(padx=10, pady=10, fill="both", expand=True)
@@ -1566,7 +1547,7 @@ class BreadCrumNavigator(ttk.Frame):
         self._active_button = None 
 
         if font is None:
-            self.font = get_main_font(self)
+            self.font = get_font(self)
         else:
             self.font = font
 
@@ -1755,7 +1736,7 @@ class ImagePicker(tk.Toplevel):
             self,
             None,
             self.master.list_commands,
-            font=get_main_font(self),
+            font=get_font(self),
             x_pos=menu_x,
             y_pos=menu_y,
             pos="top"
@@ -1794,9 +1775,9 @@ class ImagePicker(tk.Toplevel):
             )
             self.breadcrumb_nav.pack(side="left", fill="x", expand=True, padx=5)
             # Right side: Clone and Close buttons, thumnail slider
-            tk.Button(self._top_frame, font=get_main_font(self), text="Close", 
+            tk.Button(self._top_frame, font=get_font(self), text="Close", 
                       relief=BUTTON_RELIEF, command=self._on_close).pack(side="right", padx=(24, 2))
-            tk.Button(self._top_frame, font=get_main_font(self), text="Clone", 
+            tk.Button(self._top_frame, font=get_font(self), text="Clone", 
                       relief=BUTTON_RELIEF, command=self._on_clone).pack(side="right", padx=(24, 2))
         
         # Thumbnail Display Area (Canvas and Scrollbar)
@@ -1839,7 +1820,7 @@ class ImagePicker(tk.Toplevel):
         self._bot_frame.pack(fill="x", padx=5, pady=5)
         if True:
             # thumbnail sizes (left)
-            dummy_C_label = tk.Label(self._bot_frame, text="Size:", font=get_main_font(self))
+            dummy_C_label = tk.Label(self._bot_frame, text="Size:", font=get_font(self))
             dummy_C_label.pack(side="left", padx=(2,12))
             dummy_C_frame = tk.Frame(self._bot_frame)
             dummy_C_frame.pack(side="left", expand=False, fill="x")
@@ -1851,9 +1832,9 @@ class ImagePicker(tk.Toplevel):
             self.thumbnail_slider.config(command=self._update_thumbnail_width)
             self.thumbnail_slider.pack(anchor="e")
             # list command (left)
-            dummy_D_label = tk.Label(self._bot_frame, text="Show:", font=get_main_font(self))
+            dummy_D_label = tk.Label(self._bot_frame, text="Show:", font=get_font(self))
             dummy_D_label.pack(side="left", padx=(36,12))
-            self.list_cmd_entry = tk.Entry(self._bot_frame, font=get_main_font(self))
+            self.list_cmd_entry = tk.Entry(self._bot_frame, font=get_font(self))
             self.list_cmd_entry.insert(0, self._list_cmd)
             self.list_cmd_entry.pack(side="left", fill="x", expand=True, padx=(0,12))
             self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
@@ -1861,9 +1842,9 @@ class ImagePicker(tk.Toplevel):
             # self.list_cmd_entry.bind("<Shift-Return>", self._show_list_cmd_menu)
             self.list_cmd_entry.bind("<Leave>", lambda event: self.focus_set())
             # Select and Deselect All buttons (right)
-            tk.Button(self._bot_frame, font=get_main_font(self), text="Sel. All",
+            tk.Button(self._bot_frame, font=get_font(self), text="Sel. All",
                       relief=BUTTON_RELIEF, command=self._on_select).pack(side="right", padx=(24, 2))
-            tk.Button(self._bot_frame, font=get_main_font(self), text="Desel.", 
+            tk.Button(self._bot_frame, font=get_font(self), text="Desel.", 
                       relief=BUTTON_RELIEF, command=self._on_deselect).pack(side="right", padx=(24, 2))
 
         self.watcher.start_watching(self._image_dir)
@@ -1911,11 +1892,11 @@ class ImagePicker(tk.Toplevel):
         ghost.attributes('-alpha', 0.7)
         if files:
             ghost_label = tk.Label(ghost, text=f"move {len(files)} files from directory {base} selected", 
-                                   wraplength=300, font=get_main_font(self), bg="light green", 
+                                   wraplength=300, font=get_font(self), bg="light green", 
                                    relief=LABEL_RELIEF, padx=10, pady=5)
         else:
             ghost_label = tk.Label(ghost, text=f"NO FILES SELECTED in {base}", wraplength=300,
-                                   font=get_main_font(self), bg="red", relief=LABEL_RELIEF, padx=10, pady=5)
+                                   font=get_font(self), bg="red", relief=LABEL_RELIEF, padx=10, pady=5)
         ghost_label.pack()
         ghost.geometry(f"+{x - 10}+{y - 10}")
         return ghost
@@ -1974,7 +1955,7 @@ class ImagePicker(tk.Toplevel):
         log_debug("enter: _browse_directory.")
         if not os.path.isdir(path):
             custom_message_dialog(parent=self, title="Error", message=f"Invalid directory: {path}", 
-                                  font=get_main_font(self))
+                                  font=get_font(self))
             return
         
         self._image_dir = path
@@ -2025,7 +2006,7 @@ class FlexibleTextField(tk.Frame):
         self.command_callback = command_callback
         self._previous_index = None
         if font is None:
-            self.font = get_main_font(self)
+            self.font = get_font(self)
         else:
             self.font = font
         self._create_widgets()
