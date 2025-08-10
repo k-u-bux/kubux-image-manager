@@ -1952,9 +1952,9 @@ class ImagePicker(tk.Toplevel):
             default_option = None,
             other_options = options,
             font = self.master.main_font,
-            x_pos = event.x_root,
-            y_pos = event.y_root,
-            pos = "center"
+            x_pos = event.x_root - 30,
+            y_pos = event.y_root - 30,
+            pos = "bottom"
         )
         command = context_menu.result
         if command:
