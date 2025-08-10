@@ -806,7 +806,7 @@ def _bind_click_or_drag_generic(source_widget, make_ghost, click_handler, button
         if mutable['drag_start_timer']:
             root_window.after_cancel(mutable['drag_start_timer'])
             mutable['drag_start_timer'] = None
-            click_handler(event.widget)
+            click_handler(event)
             mutable['dragging_widget'] = None
 
     source_widget.bind(button_press, on_press)
@@ -1905,8 +1905,8 @@ class ImagePicker(tk.Toplevel):
         ghost.geometry(f"+{x - 10}+{y - 10}")
         return ghost
     
-    def _exec_cmd_for_image(self, widget):
-        args = [ widget.img_path ]
+    def _exec_cmd_for_image(self, event):
+        args = [ event.widget.img_path ]
         self.master.execute_current_command_with_args( args )
         
     def _static_configure_picker_button(self, btn, img_path):
@@ -1922,7 +1922,8 @@ class ImagePicker(tk.Toplevel):
             bg=self.cget("background")
         )
         bind_click_or_drag(btn, self._make_ghost, self._toggle_selection)
-        bind_right_click_or_drag(btn, self._make_right_ghost, self._exec_cmd_for_image)
+        bind_right_click_or_drag(btn, self._make_right_ghost, self._open_context_menu)
+        btn.bind("<Shift-Button-3>", self._exec_cmd_for_image)
         if img_path in self.master.selected_files:
             btn.config(highlightbackground="blue")
         else:
@@ -1944,6 +1945,22 @@ class ImagePicker(tk.Toplevel):
         for file in all_files:
             self.master.unselect_file( file )
 
+    def _open_context_menu(self, event):
+        options = self.master.command_field.current_cmd_list()
+        context_menu = LongMenu(
+            self,
+            default_option = None,
+            other_options = options,
+            font = self.master.main_font,
+            x_pos = event.x_root,
+            y_pos = event.y_root,
+            pos = "center"
+        )
+        command = context_menu.result
+        if command:
+            args = [ event.widget.img_path ]
+            self.master.execute_command_with_args( command, args )
+
 
     def _browse_directory(self, path):
         log_debug("enter: _browse_directory.")
@@ -1961,8 +1978,8 @@ class ImagePicker(tk.Toplevel):
         self._adjust_gallery_scroll_position()
         log_debug("exit: _browse_directory.")
 
-    def _toggle_selection(self, button):
-        self.master.toggle_selection(button.img_path)
+    def _toggle_selection(self, event):
+        self.master.toggle_selection(event.widget.img_path)
 
     def _on_canvas_configure(self, event):
         self._gallery_canvas.itemconfig(self._gallery_canvas.find_all()[0], width=event.width)
@@ -2034,6 +2051,11 @@ class FlexibleTextField(tk.Frame):
     def _current_index(self):
         return self.text_area.index(tk.INSERT).split('.')[0]
 
+    def _current_length(self):
+        last_char_index = self.text_area.index("end-1c")
+        line_number = last_char_index.split('.')[0]
+        return int(line_number)
+
     def _on_cursor_move(self, event):
         current_index = self._current_index()
         # log_debug(f"move from {self.previous_index} to {current_index}")
@@ -2054,14 +2076,21 @@ class FlexibleTextField(tk.Frame):
             pass
         self._on_cursor_move(None)
 
-    def current_command(self):
-        index = self._current_index()
+    def get_command(self, index):
         start = f"{index}.0"
         end = f"{index}.end"
         return self.text_area.get(start, end).strip()
+       
+
+    def current_command(self):
+        index = self._current_index()
+        return ( self.get_command( index ) )
 
     def current_text(self):
         return self.text_area.get("1.0", tk.END)
+
+    def current_cmd_list(self):
+        return [ self.get_command(index) for index in range(1,self._current_length()+1)]
 
     def call_current_command(self):
         command = self.current_command()
@@ -2075,6 +2104,7 @@ def strip_prefix(prefix, string):
     if string.startswith(prefix):
         return string[ len(prefix) : ].strip()
     return None
+
             
 def expand_env_vars(input_string: str) -> str:
     # Regex to find patterns like ${VAR_NAME}.
@@ -2092,6 +2122,7 @@ def expand_env_vars(input_string: str) -> str:
     # Use re.sub to find all matches of the pattern and replace them
     # using the 'replacer' function.
     return re.sub(env_var_pattern, replacer, input_string)
+
 
 def expand_wildcards(command_line: str, selected_files: list[str]) -> list[str]:
     try:
