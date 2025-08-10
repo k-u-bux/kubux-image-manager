@@ -910,10 +910,6 @@ class EditableLabelWithCopy(tk.Frame):
 
 
 class ImageViewer(tk.Toplevel):
-    """
-    A widget for displaying an image with zooming and panning capabilities.
-    """
-
     def __init__(self, master, image_info ):
         super().__init__(master, class_="kubux-image-manager")
         log_debug(f"opening image from info {image_info}")
@@ -921,21 +917,21 @@ class ImageViewer(tk.Toplevel):
         self.image_path = image_info[0]
         self.file_name = os.path.basename( self.image_path )
         self.dir_name = os.path.dirname( self.image_path )
-        self._geometry = image_info[1]
-        self._fullscreen = image_info[2]
+        self.window_geometry = image_info[1]
+        self.is_fullscreen = image_info[2]
         self.original_image = get_full_size_image(self.image_path)
         self.display_image = None
         self.photo_image = None
 
-        if self._geometry is not None:
-            self.geometry(self._geometry)            
+        if self.window_geometry is not None:
+            self.geometry(self.window_geometry)            
 
         w, h = self.original_image.size
         x = w
         y = h
-        while x < 120 and y < 120 :
-            x = 2*x
-            y = 2*y
+        while x < 1000 and y < 600 :
+            x = 1.1*x
+            y = 1.1*y
         while 1300 < x or 900 < y:
             x = x / 1.1
             y = y / 1.1
@@ -997,15 +993,15 @@ class ImageViewer(tk.Toplevel):
         self.wm_attributes("-type", "normal")
         self.wm_attributes('-fullscreen', False)
         self.protocol("WM_DELETE_WINDOW", self._close)
-        self._geometry=self.geometry()
+        self.window_geometry=self.geometry()
         self.deiconify()
-        self.set_screen_mode(self._fullscreen)
+        self.set_screen_mode(self.is_fullscreen)
         self.focus_set()
         self.canvas.focus_set()
 
     def get_image_info(self):
-        self._geometry = self.geometry()
-        return self.image_path, self._geometry, self._fullscreen
+        self.window_geometry = self.geometry()
+        return self.image_path, self.window_geometry, self.is_fullscreen
         
     def set_screen_mode(self, is_fullscreen):
         self.attributes('-fullscreen', is_fullscreen)
@@ -1013,8 +1009,8 @@ class ImageViewer(tk.Toplevel):
         self._update_image()
 
     def toggle_fullscreen(self):
-        self._fullscreen = not self._fullscreen
-        self.set_screen_mode(self._fullscreen)
+        self.is_fullscreen = not self.is_fullscreen
+        self.set_screen_mode(self.is_fullscreen)
 
     def _update_title(self):
         title = f"{self.file_name} (file)"
@@ -1123,7 +1119,7 @@ class ImageViewer(tk.Toplevel):
         self._close()
     
     def _close(self):
-        if self._fullscreen:
+        if self.is_fullscreen:
             self.toggle_fullscreen()
         self.master.open_images.remove(self)
         self.destroy()
@@ -1690,14 +1686,14 @@ class ImagePicker(tk.Toplevel):
     def __init__(self, master, picker_info = None):
         super().__init__(master, class_="kubux-image-manager")
         log_debug(f"open file picker = {picker_info}")
-        self._thumbnail_width = picker_info[0]
-        self._image_dir = picker_info[1]
-        self._list_cmd = picker_info[2]
-        self._geometry = picker_info[3]
-        self.background_worker = BackgroundWorker( self._image_dir, self._thumbnail_width )
-        self._update_thumbnail_job = None
+        self.thumbnail_width = picker_info[0]
+        self.image_dir = picker_info[1]
+        self.list_cmd = picker_info[2]
+        self.window_geometry = picker_info[3]
+        self.background_worker = BackgroundWorker( self.image_dir, self.thumbnail_width )
+        self.update_thumbnail_job_id = None
         self.watcher = DirectoryWatcher(self)
-        self.geometry(self._geometry)
+        self.geometry(self.window_geometry)
         self._create_widgets()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(500, self._cache_widget)
@@ -1705,21 +1701,21 @@ class ImagePicker(tk.Toplevel):
     def _cache_widget(self):
         try:
             path_name = self.background_worker.path_name_queue.get_nowait()
-            self._gallery_grid._get_button(path_name, self._thumbnail_width)
+            self._gallery_grid._get_button(path_name, self.thumbnail_width)
         except queue.Empty:
             pass
         self.after(50, self._cache_widget)
 
     def get_picker_info(self):
-        self._geometry = self.geometry()
-        return self._thumbnail_width, self._image_dir, self._list_cmd, self._geometry
+        self.window_geometry = self.geometry()
+        return self.thumbnail_width, self.image_dir, self.list_cmd, self.window_geometry
         
     def _on_clone(self):
         self.master.open_picker_dialog( self.get_picker_info() )
 
     def _update_list_cmd(self, event):
-        self._list_cmd = event.widget.get()
-        prepend_or_move_to_front(self._list_cmd, self.master.list_commands)
+        self.list_cmd = event.widget.get()
+        prepend_or_move_to_front(self.list_cmd, self.master.list_commands)
         self.after( 0, self._regrid() )
         
     def _show_list_cmd_menu(self, event):
@@ -1749,7 +1745,7 @@ class ImagePicker(tk.Toplevel):
 
     def _regrid(self):
         self.update_idletasks()
-        self._gallery_grid.set_size_path_and_command(self._thumbnail_width, self._image_dir, self._list_cmd)
+        self._gallery_grid.set_size_path_and_command(self.thumbnail_width, self.image_dir, self.list_cmd)
         self.update_idletasks()
 
     def _redraw(self):
@@ -1758,10 +1754,10 @@ class ImagePicker(tk.Toplevel):
         self.update_idletasks()
        
     def _handle_drop(self, source_button, target_picker):
-        self.master.move_selected_files_to_directory(source_button.img_path, target_picker._image_dir)
+        self.master.move_selected_files_to_directory(source_button.img_path, target_picker.image_dir)
         
     def _handle_right_drop(self, source_button, target_picker):
-        self.master.move_file_to_directory(source_button.img_path, target_picker._image_dir)
+        self.master.move_file_to_directory(source_button.img_path, target_picker.image_dir)
         
     def _create_widgets(self):
         # top bar
@@ -1794,9 +1790,9 @@ class ImagePicker(tk.Toplevel):
             
             self._gallery_grid = DirectoryThumbnailGrid(
                 self._gallery_canvas,
-                directory_path=self._image_dir,
-                list_cmd=self._list_cmd,
-                item_width=self._thumbnail_width,
+                directory_path=self.image_dir,
+                list_cmd=self.list_cmd,
+                item_width=self.thumbnail_width,
                 item_border_width=6,
                 static_button_config_callback=self._static_configure_picker_button,
                 dynamic_button_config_callback=self._dynamic_configure_picker_button,
@@ -1828,14 +1824,14 @@ class ImagePicker(tk.Toplevel):
                 dummy_C_frame, from_=96, to=480, orient="horizontal", relief=SCALE_RELIEF,
                 resolution=20, showvalue=False
             )
-            self.thumbnail_slider.set(self._thumbnail_width)
+            self.thumbnail_slider.set(self.thumbnail_width)
             self.thumbnail_slider.config(command=self._update_thumbnail_width)
             self.thumbnail_slider.pack(anchor="e")
             # list command (left)
             dummy_D_label = tk.Label(self._bot_frame, text="Show:", font=get_font(self))
             dummy_D_label.pack(side="left", padx=(36,12))
             self.list_cmd_entry = tk.Entry(self._bot_frame, font=get_font(self))
-            self.list_cmd_entry.insert(0, self._list_cmd)
+            self.list_cmd_entry.insert(0, self.list_cmd)
             self.list_cmd_entry.pack(side="left", fill="x", expand=True, padx=(0,12))
             self.list_cmd_entry.bind("<Return>", self._update_list_cmd)
             self.list_cmd_entry.bind("<Button-3>", self._show_list_cmd_menu)
@@ -1847,13 +1843,11 @@ class ImagePicker(tk.Toplevel):
             tk.Button(self._bot_frame, font=get_font(self), text="Desel.", 
                       relief=BUTTON_RELIEF, command=self._on_deselect).pack(side="right", padx=(24, 2))
 
-        self.watcher.start_watching(self._image_dir)
+        self.watcher.start_watching(self.image_dir)
         self._gallery_canvas.yview_moveto(0.0)
-        self.background_worker.run( self._image_dir, self._thumbnail_width )
-        self.breadcrumb_nav.set_path( self._image_dir )
+        self.background_worker.run( self.image_dir, self.thumbnail_width )
+        self.breadcrumb_nav.set_path( self.image_dir )
         self._gallery_grid.regrid()
-        # self._regrid()
-        # self._adjust_gallery_scroll_position()
         self.after(100, self.focus_set)
 
         bind_drop(self, self._handle_drop)
@@ -1941,12 +1935,12 @@ class ImagePicker(tk.Toplevel):
         self.destroy()
 
     def _on_select(self):
-        all_files = list_image_files_by_command( self._image_dir, self._list_cmd )
+        all_files = list_image_files_by_command( self.image_dir, self.list_cmd )
         for file in all_files:
             self.master.select_file( file )
 
     def _on_deselect(self):
-        all_files = list_image_files_by_command( self._image_dir, self._list_cmd )
+        all_files = list_image_files_by_command( self.image_dir, self.list_cmd )
         for file in all_files:
             self.master.unselect_file( file )
 
@@ -1958,9 +1952,9 @@ class ImagePicker(tk.Toplevel):
                                   font=get_font(self))
             return
         
-        self._image_dir = path
+        self.image_dir = path
         self.watcher.change_dir( path )
-        self.background_worker.run( path, self._thumbnail_width )
+        self.background_worker.run( path, self.thumbnail_width )
             
         self.breadcrumb_nav.set_path(path)
         self._regrid()
@@ -1979,11 +1973,11 @@ class ImagePicker(tk.Toplevel):
         self._adjust_gallery_scroll_position(old_scroll_fraction)
 
     def _update_thumbnail_width(self, value):
-        if self._update_thumbnail_job: self.after_cancel(self._update_thumbnail_job)
-        self._update_thumbnail_job = self.after(400, lambda: self._do_update_thumbnail_width(int(value)))
+        if self.update_thumbnail_job_id: self.after_cancel(self.update_thumbnail_job_id)
+        self.update_thumbnail_job_id = self.after(400, lambda: self._do_update_thumbnail_width(int(value)))
         
     def _do_update_thumbnail_width(self, value):
-        self._thumbnail_width = value
+        self.thumbnail_width = value
         self._regrid()
         
     def _bind_mousewheel(self, widget):
@@ -2004,7 +1998,7 @@ class FlexibleTextField(tk.Frame):
     def __init__(self, parent, command_callback, commands="", font=None):
         super().__init__(parent)
         self.command_callback = command_callback
-        self._previous_index = None
+        self.previous_index = None
         if font is None:
             self.font = get_font(self)
         else:
@@ -2042,12 +2036,12 @@ class FlexibleTextField(tk.Frame):
 
     def _on_cursor_move(self, event):
         current_index = self._current_index()
-        # log_debug(f"move from {self._previous_index} to {current_index}")
-        if current_index != self._previous_index:
-            if self._previous_index:
+        # log_debug(f"move from {self.previous_index} to {current_index}")
+        if current_index != self.previous_index:
+            if self.previous_index:
                 self.text_area.tag_remove('current_line_highlight', "1.0", tk.END)
             self.text_area.tag_add('current_line_highlight', f"{current_index}.0", f"{current_index}.end")
-            self._previous_index = current_index
+            self.previous_index = current_index
 
     def _on_double_click_select(self, event):
         index = self.text_area.index(f"@{event.x},{event.y}").split('.')[0]
