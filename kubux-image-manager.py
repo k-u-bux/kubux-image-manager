@@ -1837,10 +1837,13 @@ class ImagePicker(tk.Toplevel):
             self.list_cmd_entry.bind("<Button-3>", self._show_list_cmd_menu)
             # self.list_cmd_entry.bind("<Shift-Return>", self._show_list_cmd_menu)
             self.list_cmd_entry.bind("<Leave>", lambda event: self.focus_set())
-            # Select and Deselect All buttons (right)
-            tk.Button(self._bot_frame, font=get_font(self), text="Sel. All",
+            # Apply, Select and Deselect All buttons (right)
+            self.apply_btn = tk.Button(self._bot_frame, font=get_font(self), text="Apply", 
+                                       relief=BUTTON_RELIEF, command=self._on_apply)
+            self.apply_btn.pack(side="right", padx=(24, 2))
+            tk.Button(self._bot_frame, font=get_font(self), text="Sel.",
                       relief=BUTTON_RELIEF, command=self._on_select).pack(side="right", padx=(24, 2))
-            tk.Button(self._bot_frame, font=get_font(self), text="Desel.", 
+            tk.Button(self._bot_frame, font=get_font(self), text="Des.", 
                       relief=BUTTON_RELIEF, command=self._on_deselect).pack(side="right", padx=(24, 2))
 
         self.watcher.start_watching(self.image_dir)
@@ -1944,6 +1947,23 @@ class ImagePicker(tk.Toplevel):
         all_files = list_image_files_by_command( self.image_dir, self.list_cmd )
         for file in all_files:
             self.master.unselect_file( file )
+
+    def _on_apply(self):
+        files = self.master.selected_files_in_directory(self.image_dir)
+        options = self.master.command_field.current_cmd_list()
+        context_menu = LongMenu(
+            self,
+            default_option = None,
+            other_options = options,
+            font = self.master.main_font,
+            x_pos = self.apply_btn.winfo_rootx() - 30,
+            y_pos = self.apply_btn.winfo_rooty() - 30,
+            pos = "center"
+        )
+        command = context_menu.result
+        if command:
+            self.master.execute_command_with_args( command, files )
+        
 
     def _open_context_menu(self, event):
         options = self.master.command_field.current_cmd_list()
