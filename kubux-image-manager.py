@@ -243,14 +243,16 @@ def prepend_or_move_to_front(entry, the_list):
 # --- file ops ---
 
 def is_file_below_dir(file_path, dir_path):
-    file_path = os.path.abspath(file_path)
-    dir_path = os.path.abspath(dir_path)
-    return file_path.startswith(dir_path + os.sep)
+    file_dir_path = os.path.realpath( os.path.dirname(file_path) )
+    dir_path = os.path.realpath(dir_path)
+    log_debug(f"{file_path} vs {dir_path}")
+    return file_dir_path.startswith(dir_path)
 
 def is_file_in_dir(file_path, dir_path):
-    file_path = os.path.abspath(file_path)
-    dir_path = os.path.abspath(dir_path)
-    return file_path == os.path.join( dir_path, os.path.basename( file_path ) )
+    file_dir_path = os.path.realpath( os.path.dirname(file_path) )
+    dir_path = os.path.realpath(dir_path)
+    log_debug(f"{file_path} vs {dir_path}")
+    return dir_path == file_dir_path
     
 def execute_shell_command(command):
     result = subprocess.run(command, shell=True)
@@ -289,6 +291,8 @@ def move_file_to_directory(file_path, target_dir_path):
     """
     Moves a file or symlink to a new directory, preserving link validity for relative symlinks
     """
+
+    log_debug("enter:move_file_to_directory")
     try:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Source file or link not found: '{file_path}'")
@@ -301,7 +305,8 @@ def move_file_to_directory(file_path, target_dir_path):
 
         if os.path.islink(file_path):
             link_target = os.readlink(file_path)
-            
+            log_debug(f"{file_path} is a symlink with target {link_target}.")
+           
             if os.path.isabs(link_target):
                 # If absolute, just move the symlink file itself.
                 shutil.move(file_path, new_path)
@@ -2318,9 +2323,11 @@ class ImageManager(tk.Tk):
         source_dir = os.path.realpath(os.path.dirname(file_path))
         log_debug(f"move selected files from {source_dir} to directory {target_dir}")
         old_selected = self.selected_files
+        log_debug(f"selected: {old_selected}")
         self.selected_files = []
         for file in old_selected:
             if is_file_in_dir(file, source_dir):                
+                log_debug(f"move {file} from {source_dir} to directory {target_dir}")        
                 new_path = move_file_to_directory(file, target_dir)
                 self.selected_files.append(new_path)
             else:
