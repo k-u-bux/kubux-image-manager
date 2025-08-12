@@ -1311,8 +1311,18 @@ class DirectoryThumbnailGrid(tk.Frame):
         assert btn is not None
         return btn
 
+    def refresh(self):
+        for img_path, btn in self._active_widgets.items():
+            if self._dynamic_button_config_callback: 
+                self._dynamic_button_config_callback(btn, img_path)
+        return self.get_width_and_height()
+        
+
     def regrid(self):
+        old_files = self._files
         self._files = list_image_files_by_command(self._directory_path, self._list_cmd)
+        if self._files == old_files:
+            return self.refresh()
         log_debug(f"picker contains: {self._files}")
         return self.redraw()
 
@@ -1758,6 +1768,11 @@ class ImagePicker(tk.Toplevel):
         self._gallery_grid.redraw()
         self.update_idletasks()
        
+    def _refresh(self):
+        self.update_idletasks()
+        self._gallery_grid.refresh()
+        self.update_idletasks()
+       
     def _handle_drop(self, source_button, target_picker):
         self.master.move_selected_files_to_directory(source_button.img_path, target_picker.image_dir)
         
@@ -2190,6 +2205,7 @@ class ImageManager(tk.Tk):
         font_name, font_size = get_linux_system_ui_font_info()
         self.regrid_job = None
         self.redraw_job = None
+        self.refresh_job = None
         self._ui_scale_job = None
         self.base_font_size = font_size
         self.main_font = tkFont.Font(family=font_name, size=int(self.base_font_size * self.ui_scale))
@@ -2386,11 +2402,17 @@ class ImageManager(tk.Tk):
     def execute_current_command_with_args(self, args):
         self.execute_command_with_args(self.command_field.current_command(), args)
         
+    # def broadcast_selection_change(self):
+    #     self.sanitize_selected_files()
+    #     if self.redraw_job:
+    #         self.after_cancel(self.redraw_job)
+    #     self.redraw_job = self.after(50, self.redraw_open_pickers)
+
     def broadcast_selection_change(self):
         self.sanitize_selected_files()
-        if self.redraw_job:
-            self.after_cancel(self.redraw_job)
-        self.redraw_job = self.after(50, self.redraw_open_pickers)
+        if self.refresh_job:
+            self.after_cancel(self.refresh_job)
+        self.refresh_job = self.after(50, self.refresh_open_pickers)
 
     def broadcast_contents_change(self):
         self.sanitize_selected_files()
@@ -2398,6 +2420,12 @@ class ImageManager(tk.Tk):
             self.after_cancel(self.regrid_job)
         self.regrid_job= self.after(50, self.regrid_open_pickers)
 
+    def refresh_open_pickers(self):
+        self.refresh_job = None
+        for picker in self.open_picker_dialogs:
+            picker._refresh()
+        self.update_button_status()
+            
     def redraw_open_pickers(self):
         self.redraw_job = None
         for picker in self.open_picker_dialogs:
