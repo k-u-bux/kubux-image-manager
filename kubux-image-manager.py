@@ -81,7 +81,7 @@ def log_error(msg):
     pass
 
 def log_debug(msg):
-    # print(msg)
+    print(msg)
     pass
 
 
@@ -184,16 +184,16 @@ def get_linux_system_ui_font_info():
     if not desktop_session:
         desktop_session = os.environ.get("DESKTOP_SESSION")
 
-    log_debug(f"Detected desktop session: {desktop_session}")
+    # log_debug(f"Detected desktop session: {desktop_session}")
 
     if desktop_session and ("GNOME" in desktop_session.upper() or
                             "CINNAMON" in desktop_session.upper() or
                             "XFCE" in desktop_session.upper() or
                             "MATE" in desktop_session.upper()):
-        log_debug("Attempting to get GTK font...")
+        # log_debug("Attempting to get GTK font...")
         return get_gtk_ui_font()
     elif desktop_session and "KDE" in desktop_session.upper():
-        log_debug("Attempting to get KDE font...")
+        # log_debug("Attempting to get KDE font...")
         return get_kde_ui_font()
     else:
         # Fallback for other desktops or if detection fails
@@ -245,13 +245,13 @@ def prepend_or_move_to_front(entry, the_list):
 def is_file_below_dir(file_path, dir_path):
     file_dir_path = os.path.realpath( os.path.dirname(file_path) )
     dir_path = os.path.realpath(dir_path)
-    log_debug(f"{file_path} vs {dir_path}")
+    # log_debug(f"{file_path} vs {dir_path}")
     return file_dir_path.startswith(dir_path)
 
 def is_file_in_dir(file_path, dir_path):
     file_dir_path = os.path.realpath( os.path.dirname(file_path) )
     dir_path = os.path.realpath(dir_path)
-    log_debug(f"{file_path} vs {dir_path}")
+    # log_debug(f"{file_path} vs {dir_path}")
     return dir_path == file_dir_path
     
 def execute_shell_command(command):
@@ -259,9 +259,9 @@ def execute_shell_command(command):
 
 def execute_shell_command_with_capture(command):
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    log_debug(f"return code = {result.returncode}")
-    log_debug(f"stdout = {result.stdout}")
-    log_debug(f"stderr = {result.stderr}")
+    # log_debug(f"return code = {result.returncode}")
+    # log_debug(f"stdout = {result.stdout}")
+    # log_debug(f"stderr = {result.stderr}")
     return result
 
 
@@ -283,7 +283,7 @@ def list_image_files_by_command(dir, cmd):
             listing.append( os.path.normpath(path) )
         else:
             listing.append( os.path.normpath( os.path.join(dir, path) ) )
-    log_debug(f"choosing from {listing}")
+    # log_debug(f"choosing from {listing}")
     return [path for path in listing if is_image_file(path) and is_file_below_dir(path, dir)]
     
     
@@ -292,7 +292,7 @@ def move_file_to_directory(file_path, target_dir_path):
     Moves a file or symlink to a new directory, preserving link validity for relative symlinks
     """
 
-    log_debug("enter:move_file_to_directory")
+    # log_debug("enter:move_file_to_directory")
     try:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Source file or link not found: '{file_path}'")
@@ -305,12 +305,12 @@ def move_file_to_directory(file_path, target_dir_path):
 
         if os.path.islink(file_path):
             link_target = os.readlink(file_path)
-            log_debug(f"{file_path} is a symlink with target {link_target}.")
+            # log_debug(f"{file_path} is a symlink with target {link_target}.")
            
             if os.path.isabs(link_target):
                 # If absolute, just move the symlink file itself.
                 shutil.move(file_path, new_path)
-                log_debug(f"Moved absolute symlink '{item_name}' to '{target_dir_path}'")
+                # log_debug(f"Moved absolute symlink '{item_name}' to '{target_dir_path}'")
             else:
                 # If relative, we must calculate the new relative path.
                 original_link_dir = os.path.dirname(os.path.abspath(file_path))
@@ -321,10 +321,10 @@ def move_file_to_directory(file_path, target_dir_path):
                 # Remove the old link and create a new one with the corrected path.
                 os.remove(file_path)
                 os.symlink(new_relative_path, new_path)
-                log_debug(f"Moved relative symlink '{item_name}' to '{target_dir_path}' and updated its target.")
+                # log_debug(f"Moved relative symlink '{item_name}' to '{target_dir_path}' and updated its target.")
         else:
             shutil.move(file_path, new_path)
-            log_debug(f"Moved file '{item_name}' to '{target_dir_path}'")
+            # log_debug(f"Moved file '{item_name}' to '{target_dir_path}'")
 
         return os.path.normpath( new_path )
         
@@ -347,19 +347,22 @@ def move_file_to_directory(file_path, target_dir_path):
 class DirectoryEventHandler(FileSystemEventHandler):
     def __init__(self, directory, image_picker):
         # super().__init__(directory)
+        log_debug(f"Initializing event handler for {directory} with picker {image_picker}")
         self.image_picker = image_picker
         self.directory = directory
         
     def on_any_event(self, event):
-        # log_debug(f"directory {self.directory} has changed.")
+        log_debug(f"directory {self.directory} has changed.")
         self.image_picker.after( 0, self.image_picker.master.broadcast_contents_change )
 
 
 class DirectoryWatcher():
     def __init__(self, image_picker):
         self.image_picker = image_picker
+        log_debug(f"Initializing watcher for picker {image_picker}")
         
     def start_watching(self, directory):
+        log_debug(f"Start watching directory {directory}")
         self.event_handler = DirectoryEventHandler(directory, self.image_picker)
         self.observer = Observer()
         self.observer.daemon = True
@@ -367,6 +370,7 @@ class DirectoryWatcher():
         self.observer.start()
 
     def stop_watching(self):
+        log_debug(f"Stop watching directory {self.image_picker.image_dir}")
         self.observer.stop()
         self.observer.join()
         self.observer = None
@@ -443,7 +447,7 @@ def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
     if  os.path.exists(cached_thumbnail_path):
         try:
             pil_image_thumbnail = Image.open(cached_thumbnail_path)
-            log_debug(f"found {img_path} at size {thumbnail_max_size} on disk.")
+            # log_debug(f"found {img_path} at size {thumbnail_max_size} on disk.")
         except Exception as e:
             log_error(f"Error loading thumbnail for {img_path}: {e}")
 
@@ -460,7 +464,7 @@ def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
 
 def get_or_make_pil(img_path, thumbnail_max_size):
     cache_key = uniq_file_id(img_path, thumbnail_max_size)
-    log_debug(f"cache_key for {img_path} @ {thumbnail_max_size} is {cache_key}")
+    # log_debug(f"cache_key for {img_path} @ {thumbnail_max_size} is {cache_key}")
     return get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size)
 
 def make_tk_image( pil_image ):
@@ -917,7 +921,7 @@ class EditableLabelWithCopy(tk.Frame):
 class ImageViewer(tk.Toplevel):
     def __init__(self, master, image_info ):
         super().__init__(master, class_="kubux-image-manager")
-        log_debug(f"opening image from info {image_info}")
+        # log_debug(f"opening image from info {image_info}")
         self.withdraw()
         self.image_path = image_info[0]
         self.file_name = os.path.basename( self.image_path )
@@ -1023,7 +1027,7 @@ class ImageViewer(tk.Toplevel):
             if os.path.islink(self.image_path):
                 title = f"{self.file_name} (symlink to {os.path.realpath(self.image_path)})"
         except Exception as e:
-            log_debug(f"Problem dealing with path {self.image_path}, error: {e}")
+            # log_debug(f"Problem dealing with path {self.image_path}, error: {e}")
             title = "oops"
         self.title(title)
         
@@ -1231,11 +1235,11 @@ class ImageViewer(tk.Toplevel):
             self.canvas.yview_moveto(max(0, min(1, y_view_fraction)))
 
     def _rename_current_image(self, old_name, new_name):
-        log_debug(f"renaming from {old_name} to {new_name}")
+        # log_debug(f"renaming from {old_name} to {new_name}")
         try:
             new_path = os.path.join(self.dir_name, new_name)
             if os.path.exists(new_path):
-                log_debug(f"there already is a file {new_path}. Not overwriting.")
+                # log_debug(f"there already is a file {new_path}. Not overwriting.")
                 return
             os.rename( self.image_path, new_path )
             self.image_path = new_path
@@ -1271,11 +1275,11 @@ class DirectoryThumbnailGrid(tk.Frame):
         self._hidden_frame.pack_propagate(False)
 
     def get_width_and_height(self):
-        log_debug("enter: get_width_and_height")
+        # log_debug("enter: get_width_and_height")
         self.update_idletasks()
         width = self.winfo_reqwidth()
         height = self.winfo_reqheight()
-        log_debug("exit: get_width_and_height")
+        # log_debug("exit: get_width_and_height")
         return width, height
         
     def set_size_path_and_command(self, width, path, list_cmd):
@@ -1290,9 +1294,10 @@ class DirectoryThumbnailGrid(tk.Frame):
         btn = self._widget_cache.get(cache_key, None)
         
         if btn is None:
-            log_debug(f"caching button widget for {img_path} @ {width}")
+            # log_debug(f"caching button widget for {img_path} @ {width}")
             tk_image = get_or_make_tk_by_key(cache_key, img_path, width)
             btn = tk.Button(self, relief=BUTTON_RELIEF)
+            btn.cache_key = cache_key
             btn.tk_image = tk_image
             btn.config(image=tk_image)
             self._widget_cache[cache_key] = btn
@@ -1305,7 +1310,7 @@ class DirectoryThumbnailGrid(tk.Frame):
                 self.update_idletasks()
                 btn.pack_forget()
         else:
-            log_debug(f"found button for for {img_path} @ {width} in the widget cache, key = {cache_key}")
+            # log_debug(f"found button for for {img_path} @ {width} in the widget cache, key = {cache_key}")
             self._widget_cache.move_to_end(cache_key)
         
         assert btn is not None
@@ -1323,7 +1328,7 @@ class DirectoryThumbnailGrid(tk.Frame):
         self._files = list_image_files_by_command(self._directory_path, self._list_cmd)
         if self._files == old_files:
             return self.refresh()
-        log_debug(f"picker contains: {self._files}")
+        # log_debug(f"picker contains: {self._files}")
         return self.redraw()
 
     def redraw(self):
@@ -1385,7 +1390,7 @@ class DirectoryThumbnailGrid(tk.Frame):
         return calculated_cols
 
     def _layout_the_grid(self):
-        log_debug("starting layout.")
+        # log_debug("starting layout.")
         desired_content_cols_for_this_pass = self._calculate_columns(self.master.winfo_width())
         if desired_content_cols_for_this_pass == 0:
             desired_content_cols_for_this_pass = 1 
@@ -1406,7 +1411,7 @@ class DirectoryThumbnailGrid(tk.Frame):
             widget = self._active_widgets.get(img_path) 
             
             if widget is None or not widget.winfo_exists():
-                log_debug(f"Warning: Attempted to layout a non-existent widget for path '{img_path}'. Skipping.")
+                # log_debug(f"Warning: Attempted to layout a non-existent widget for path '{img_path}'. Skipping.")
                 continue
             row, col_idx = divmod(i, desired_content_cols_for_this_pass)
             grid_column = col_idx + 1 
@@ -1415,7 +1420,7 @@ class DirectoryThumbnailGrid(tk.Frame):
         while len(self._widget_cache) > self._cache_size:
             self._widget_cache.popitem(last=False)
 
-        log_debug("done with layout.")
+        # log_debug("done with layout.")
         return None
         return self.get_width_and_height()
     
@@ -1564,7 +1569,7 @@ class BreadCrumNavigator(ttk.Frame):
 
     def set_path(self, path):
         if not os.path.isdir(path):
-            log_debug(f"Warning: Path '{path}' is not a directory. Cannot set breadcrumbs.")
+            # log_debug(f"Warning: Path '{path}' is not a directory. Cannot set breadcrumbs.")
             return
 
         self._current_path = os.path.normpath(path)
@@ -1700,7 +1705,7 @@ class BreadCrumNavigator(ttk.Frame):
 class ImagePicker(tk.Toplevel):
     def __init__(self, master, picker_info = None):
         super().__init__(master, class_="kubux-image-manager")
-        log_debug(f"open file picker = {picker_info}")
+        # log_debug(f"open file picker = {picker_info}")
         self.thumbnail_width = picker_info[0]
         self.image_dir = picker_info[1]
         self.list_cmd = picker_info[2]
@@ -1936,7 +1941,13 @@ class ImagePicker(tk.Toplevel):
         pass
 
     def _dynamic_configure_picker_button(self, btn, img_path):
+        cache_key = uniq_file_id(img_path, self.thumbnail_width)
         btn.img_path = img_path
+        if not btn.cache_key == cache_key:
+            btn.cache_key = cache_key
+            tk_image = get_or_make_tk_by_key(cache_key, img_path, self.thumbnail_width)
+            btn.tk_image = tk_image
+            btn.config(image=tk_image)
         btn.config(
             cursor="hand2", 
             relief=BUTTON_RELIEF, 
@@ -2003,7 +2014,7 @@ class ImagePicker(tk.Toplevel):
 
 
     def _browse_directory(self, path):
-        log_debug("enter: _browse_directory.")
+        # log_debug("enter: _browse_directory.")
         if not os.path.isdir(path):
             custom_message_dialog(parent=self, title="Error", message=f"Invalid directory: {path}", 
                                   font=get_font(self))
@@ -2016,7 +2027,7 @@ class ImagePicker(tk.Toplevel):
         self.breadcrumb_nav.set_path(path)
         self._regrid()
         self._adjust_gallery_scroll_position()
-        log_debug("exit: _browse_directory.")
+        # log_debug("exit: _browse_directory.")
 
     def _toggle_selection(self, event):
         self.master.toggle_selection(event.widget.img_path)
@@ -2156,7 +2167,8 @@ def expand_env_vars(input_string: str) -> str:
         value = os.getenv(var_name, "")
         if not value:
             # You might want to use a logging system in a larger application.
-            log_debug(f"Warning: Environment variable '{var_name}' not found. Replacing with empty string.")
+            # log_debug(f"Warning: Environment variable '{var_name}' not found. Replacing with empty string.")
+            pass
         return value
 
     # Use re.sub to find all matches of the pattern and replace them
@@ -2325,7 +2337,7 @@ class ImageManager(tk.Tk):
         self.update_idletasks()
 
     def move_file_to_directory(self, file_path, target_dir):
-        log_debug(f"move file {file_path} to directory {target_dir}")
+        # log_debug(f"move file {file_path} to directory {target_dir}")
         new_path = move_file_to_directory(file_path, target_dir)
         if file_path in self.selected_files:
             self.unselect_file(file_path)
@@ -2337,13 +2349,13 @@ class ImageManager(tk.Tk):
         
     def move_selected_files_to_directory(self, file_path, target_dir):
         source_dir = os.path.realpath(os.path.dirname(file_path))
-        log_debug(f"move selected files from {source_dir} to directory {target_dir}")
+        # log_debug(f"move selected files from {source_dir} to directory {target_dir}")
         old_selected = self.selected_files
-        log_debug(f"selected: {old_selected}")
+        # log_debug(f"selected: {old_selected}")
         self.selected_files = []
         for file in old_selected:
             if is_file_in_dir(file, source_dir):                
-                log_debug(f"move {file} from {source_dir} to directory {target_dir}")        
+                # log_debug(f"move {file} from {source_dir} to directory {target_dir}")        
                 new_path = move_file_to_directory(file, target_dir)
                 self.selected_files.append(new_path)
             else:
@@ -2354,13 +2366,13 @@ class ImageManager(tk.Tk):
         self.selected_files[:] = [path for path in self.selected_files if os.path.exists(path)]
         
     def execute_command_with_args(self, command, args):
-        log_debug(f"execute: {command} with args = {args}")
+        # log_debug(f"execute: {command} with args = {args}")
         command = expand_env_vars(command)
-        log_debug(f"command after expansion of environment variables = {command}")
+        # log_debug(f"command after expansion of environment variables = {command}")
         to_do = expand_wildcards( command, args )
         status_change = False
         for cmd in to_do:
-            log_debug(f"executing {cmd}")
+            # log_debug(f"executing {cmd}")
             if  ( files := strip_prefix("Open:", cmd) ) is not None:
                 log_action(f"execute as an internal command: Open: {files}")
                 path_list = shlex.split( files )
@@ -2433,18 +2445,20 @@ class ImageManager(tk.Tk):
         self.update_button_status()
             
     def regrid_open_pickers(self):
+        log_debug(f"regridding all open pickers.")
         self.regrid_job = None
         for picker in self.open_picker_dialogs:
+            log_debug(f"rigridding picker {picker}")
             picker._regrid()
         self.update_button_status()
             
     def select_file(self, path):
-        log_debug(f"selecting {path}")
+        # log_debug(f"selecting {path}")
         self.selected_files.append(path)
         self.broadcast_selection_change()
         
     def unselect_file(self, path):
-        log_debug(f"unselecting {path}")
+        # log_debug(f"unselecting {path}")
         try:
             self.selected_files.remove(path)
         except Exception: pass
@@ -2466,7 +2480,7 @@ class ImageManager(tk.Tk):
         self._ui_scale_job = self.after(400, lambda: self._do_update_ui_scale(float(value)))
 
     def clear_selection(self):
-        log_debug(f"clearing selection")
+        # log_debug(f"clearing selection")
         self.selected_files = []
         self.broadcast_selection_change()
         
@@ -2511,15 +2525,15 @@ class ImageManager(tk.Tk):
             traceback.print_exc()
         
     def open_image_file(self, file_path):
-        log_debug(f"opening file {file_path}")
+        # log_debug(f"opening file {file_path}")
         self.open_image([ file_path, None, False ])
         
     def fullscreen_image_file(self, file_path):
-        log_debug(f"opening file {file_path} fullscreen")
+        # log_debug(f"opening file {file_path} fullscreen")
         self.open_image([ file_path, None, True ])
         
     def open_image_directory(self, directory_path):
-        log_debug(f"opening directory {directory_path}")
+        # log_debug(f"opening directory {directory_path}")
         if self.open_picker_dialogs:
             self.new_picker_info = self.open_picker_dialogs[-1].get_picker_info()
         self.open_picker_dialog([ self.new_picker_info[0], 
