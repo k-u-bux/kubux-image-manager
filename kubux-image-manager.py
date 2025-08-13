@@ -571,7 +571,7 @@ def set_wallpaper(image_path, error_callback=fallback_show_error):
                 d.writeConfig("Image", "{abs_path}");
             }}
             """
-            os.system(f"qdbus org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript '{script}'")
+            subprocess.run([ "qdbus", "org.kde.plasmashell", "/PlasmaShell",  "org.kde.PlasmaShell.evaluateScript", script])
             success = True
             
         # XFCE
@@ -585,47 +585,47 @@ def set_wallpaper(image_path, error_callback=fallback_show_error):
                     # Find all properties for this monitor
                     monitor_props = [p for p in props.splitlines() if f'/backdrop/screen0/{monitor}/' in p and p.endswith('last-image')]
                     for prop in monitor_props:
-                        os.system(f"xfconf-query -c xfce4-desktop -p {prop} -s {abs_path}")
+                        subprocess.run([ "xfconf-query", "-c", "xfce4-desktop",  "-p", f"{prop}",  "-s", f"{abs_path}" ])
                 success = True
             except:
                 # Fallback for older XFCE
-                os.system(f"xfconf-query -c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/last-image -s {abs_path}")
+                subprocess.run([ "xfconf-query", "-c", "xfce4-desktop", "-p", "/backdrop/screen0/monitor0/workspace0/last-image", "-s", f"{abs_path}" ])
                 success = True
                 
         # Cinnamon
         elif 'cinnamon' in desktop_env:
-            os.system(f"gsettings set org.cinnamon.desktop.background picture-uri '{file_uri}'")
+            subprocess.run([ "gsettings", "set", "org.cinnamon.desktop.background", "picture-uri", f"{file_uri}" ])
             success = True
             
         # MATE
         elif 'mate' in desktop_env:
-            os.system(f"gsettings set org.mate.background picture-filename '{abs_path}'")
+            subprocess.run([ "gsettings", "set", "org.mate.background", "picture-filename", f"{abs_path}" ])
             success = True
             
         # LXQt, LXDE
         elif 'lxqt' in desktop_env or 'lxde' in desktop_env:
             # For PCManFM-Qt
-            os.system(f"pcmanfm-qt --set-wallpaper={abs_path}")
+            subprocess.run([ "pcmanfm-qt", f"--set-wallpaper={abs_path}" ])
             # For PCManFM
-            os.system(f"pcmanfm --set-wallpaper={abs_path}")
+            subprocess.run([ "pcmanfm", f"--set-wallpaper={abs_path}" ])
             success = True
             
         # i3wm, sway and other tiling window managers often use feh
         elif any(de in desktop_env for de in ['i3', 'sway']):
-            os.system(f"feh --bg-fill '{abs_path}'")
+            subprocess.run([ "feh", "--bg-fill", f"{abs_path}" ])
             success = True
             
         # Fallback method using feh (works for many minimal window managers)
         elif not success:
             # Try generic methods
             methods = [
-                f"feh --bg-fill '{abs_path}'",
-                f"nitrogen --set-scaled '{abs_path}'",
-                f"gsettings set org.gnome.desktop.background picture-uri '{file_uri}'"
+                [ "feh", "--bg-fill" f"{abs_path}" ],
+                [ "nitrogen", "--set-scaled", f"{abs_path}" ],
+                [ "gsettings", "set", "org.gnome.desktop.background", "picture-uri", f"{file_uri}" ]
             ]
             
             for method in methods:
-                exit_code = os.system(method)
+                exit_code = subprocess.run(method)
                 if exit_code == 0:
                     success = True
                     break
