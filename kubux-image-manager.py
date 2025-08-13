@@ -554,9 +554,9 @@ def set_wallpaper(image_path, error_callback=fallback_show_error):
         # GNOME, Unity, Pantheon, Budgie
         if any(de in desktop_env for de in ['gnome', 'unity', 'pantheon', 'budgie']):
             # Try GNOME 3 approach first (newer versions)
-            os.system(f"gsettings set org.gnome.desktop.background picture-uri '{file_uri}'")
+            subprocess.run(['gsettings', 'set', 'org.gnome.desktop.background', 'picture-uri', file_uri])
             # For GNOME 40+ with dark mode support
-            os.system(f"gsettings set org.gnome.desktop.background picture-uri-dark '{file_uri}'")
+            subprocess.run(['gsettings', 'set', 'org.gnome.desktop.background', 'picture-uri-dark', file_uri])
             success = True
             
         # KDE Plasma
