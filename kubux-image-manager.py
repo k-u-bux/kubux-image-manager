@@ -578,7 +578,6 @@ def set_wallpaper(image_path, error_callback=fallback_show_error):
         elif 'xfce' in desktop_env:
             # Get the current monitor
             try:
-                import subprocess
                 props = subprocess.check_output(['xfconf-query', '-c', 'xfce4-desktop', '-p', '/backdrop', '-l']).decode('utf-8')
                 monitors = set([p.split('/')[2] for p in props.splitlines() if p.endswith('last-image')])
                 
