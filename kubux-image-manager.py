@@ -1845,7 +1845,7 @@ class ImagePicker(tk.Toplevel):
             dummy_C_frame = tk.Frame(self._bot_frame)
             dummy_C_frame.pack(side="left", expand=False, fill="x")
             self.thumbnail_slider = tk.Scale(
-                dummy_C_frame, from_=96, to=480, orient="horizontal", relief=SCALE_RELIEF,
+                dummy_C_frame, from_=96, to=1920, orient="horizontal", relief=SCALE_RELIEF,
                 resolution=20, showvalue=False
             )
             self.thumbnail_slider.set(self.thumbnail_width)
