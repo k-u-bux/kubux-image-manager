@@ -14,6 +14,7 @@
         # Define Python environment with all required packages including together
         pythonEnv = pkgs.python3.withPackages (ps: with ps; [
           tkinter
+          pyside6
           pillow
           requests
           watchdog
