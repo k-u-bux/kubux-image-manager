@@ -2032,9 +2032,6 @@ class ImageManager(QMainWindow):
             self.deselect_button.setEnabled(True)
 
     def close_app(self):
-        self._save_app_settings()
-        for picker in list(self.open_picker_dialogs):
-            picker._on_close()
         self.close()
 
     def fullscreen_path(self, path):
