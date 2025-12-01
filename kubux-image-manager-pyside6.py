@@ -27,20 +27,21 @@ import queue
 import threading
 import subprocess
 import time
+import sys
 from collections import OrderedDict
 from datetime import datetime
 
 # PySide6 imports
-from PySide6.QtCore import Qt, QSize, QPoint, QRect, QTimer, Signal, QObject, QThread
-from PySide6.QtCore import QModelIndex, QAbstractListModel, QByteArray, QMimeData
+from PySide6.QtCore import (Qt, QSize, QPoint, QRect, QTimer, Signal, QObject, 
+                            QEvent, QMimeData, QByteArray)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton, 
                               QVBoxLayout, QHBoxLayout, QGridLayout, QLineEdit, 
-                              QPlainTextEdit, QScrollArea, QSlider, QFileDialog,
-                              QListView, QAbstractItemView, QMenu, QDialog, QMessageBox,
-                              QFrame, QScrollBar, QSizePolicy)
+                              QTextEdit, QScrollArea, QSlider, QFileDialog,
+                              QDialog, QMessageBox, QFrame, QScrollBar, QSizePolicy,
+                              QListWidget, QListWidgetItem, QSplitter, QSpacerItem)
 from PySide6.QtGui import (QPixmap, QImage, QPainter, QColor, QFont, QFontMetrics,
-                          QTextCursor, QDrag, QTextDocument, QTextCharFormat, 
-                          QSyntaxHighlighter, QIcon, QAction, QCursor)
+                          QTextCursor, QDrag, QTextCharFormat, QIcon, QAction, 
+                          QCursor, QKeySequence, QPalette, QTextBlockFormat)
 
 # External library imports
 from watchdog.events import FileSystemEventHandler
@@ -90,38 +91,20 @@ def log_debug(msg):
 # --- probe font ---
 
 def get_gtk_ui_font():
-    """
-    Queries the system's default UI font and size for GTK-based desktops
-    using gsettings.
-    """
     try:
-        # Check if gsettings is available
         subprocess.run(["which", "gsettings"], check=True, capture_output=True)
-
-        # Get the font name string from GNOME's desktop interface settings
         font_info_str = subprocess.run(
             ["gsettings", "get", "org.gnome.desktop.interface", "font-name"],
-            capture_output=True,
-            text=True,
-            check=True
-        ).stdout.strip().strip("'") # Remove leading/trailing whitespace and single quotes
-
-        # Example output: 'Noto Sans 10', 'Ubuntu 11', 'Cantarell 11'
-        parts = font_info_str.rsplit(' ', 1) # Split only on the last space
-
-        font_name = "Sans" # Default fallback
-        font_size = 10     # Default fallback
-
+            capture_output=True, text=True, check=True
+        ).stdout.strip().strip("'")
+        parts = font_info_str.rsplit(' ', 1)
+        font_name = "Sans"
+        font_size = 10
         if len(parts) == 2 and parts[1].isdigit():
             font_name = parts[0]
             font_size = int(parts[1])
         else:
-            # Handle cases like "Font Name" 10 or unexpected formats
-            # Attempt to split assuming format "Font Name Size"
             try:
-                # Common scenario: "Font Name X" where X is size
-                # Sometimes font names have spaces (e.g., "Noto Sans CJK JP")
-                # So finding the *last* space before digits is key.
                 last_space_idx = font_info_str.rfind(' ')
                 if last_space_idx != -1 and font_info_str[last_space_idx+1:].isdigit():
                     font_name = font_info_str[:last_space_idx]
@@ -130,130 +113,99 @@ def get_gtk_ui_font():
                     log_error(f"Warning: Unexpected gsettings font format: '{font_info_str}'")
             except Exception as e:
                 log_error(f"Error parsing gsettings font: {e}")
-
         return font_name, font_size
-
     except subprocess.CalledProcessError:
-        log_error("gsettings command not found or failed. Are you on a GTK-based desktop with dconf/gsettings installed?")
-        return "Sans", 10 # Fallback for non-GTK or missing gsettings
+        log_error("gsettings command not found or failed.")
+        return "Sans", 10
     except Exception as e:
         log_error(f"An error occurred while getting GTK font settings: {e}")
-        return "Sans", 10 # General fallback
+        return "Sans", 10
 
 def get_kde_ui_font():
-    """
-    Queries the system's default UI font and size for KDE Plasma desktops
-    using kreadconfig5.
-    """
     try:
-        # Check if kreadconfig5 is available
         subprocess.run(["which", "kreadconfig5"], check=True, capture_output=True)
-
-        # Get the font string from the kdeglobals file
-        # This typically looks like "Font Name,points,weight,slant,underline,strikeout"
         font_string = subprocess.run(
-            ["kreadconfig5", "--file", "kdeglobals", "--group", "General", "--key", "font", "--default", "Sans,10,-1,5,50,0,0,0,0,0"],
-            capture_output=True,
-            text=True,
-            check=True
+            ["kreadconfig5", "--file", "kdeglobals", "--group", "General", "--key", "font", 
+             "--default", "Sans,10,-1,5,50,0,0,0,0,0"],
+            capture_output=True, text=True, check=True
         ).stdout.strip()
-
         parts = font_string.split(',')
         if len(parts) >= 2:
             font_name = parts[0].strip()
-            # Font size is in points. kreadconfig often gives it as an int directly.
             font_size = int(parts[1].strip())
             return font_name, font_size
         else:
             log_error(f"Warning: Unexpected KDE font format: '{font_string}'")
-            return "Sans", 10 # Fallback
-
+            return "Sans", 10
     except subprocess.CalledProcessError:
-        log_error("kreadconfig5 command not found or failed. Are you on KDE Plasma?")
-        return "Sans", 10 # Fallback for non-KDE or missing kreadconfig5
+        log_error("kreadconfig5 command not found or failed.")
+        return "Sans", 10
     except Exception as e:
         log_error(f"An error occurred while getting KDE font settings: {e}")
-        return "Sans", 10 # General fallback
+        return "Sans", 10
 
 def get_linux_system_ui_font_info():
-    """
-    Attempts to detect the Linux desktop environment and return its
-    configured default UI font family and size.
-    Returns (font_family, font_size) or (None, None) if undetectable.
-    """
-    # Check for common desktop environment indicators
     desktop_session = os.environ.get("XDG_CURRENT_DESKTOP")
     if not desktop_session:
         desktop_session = os.environ.get("DESKTOP_SESSION")
-
-    # log_debug(f"Detected desktop session: {desktop_session}")
-
     if desktop_session and ("GNOME" in desktop_session.upper() or
                             "CINNAMON" in desktop_session.upper() or
                             "XFCE" in desktop_session.upper() or
                             "MATE" in desktop_session.upper()):
-        # log_debug("Attempting to get GTK font...")
         return get_gtk_ui_font()
     elif desktop_session and "KDE" in desktop_session.upper():
-        # log_debug("Attempting to get KDE font...")
         return get_kde_ui_font()
     else:
-        # Fallback for other desktops or if detection fails
-        log_error("Could not reliably detect desktop environment. Trying common defaults or gsettings as fallback.")
-        # Try gsettings anyway, as it's common even outside "full" GNOME
+        log_error("Could not reliably detect desktop environment.")
         font_name, font_size = get_gtk_ui_font()
-        if font_name != "Sans" or font_size != 10: # If gsettings returned something more specific
+        if font_name != "Sans" or font_size != 10:
             return font_name, font_size
-        return "Sans", 10 # Final generic fallback
+        return "Sans", 10
 
 def get_linux_ui_font():
     font_name, font_size = get_linux_system_ui_font_info()
     return QFont(font_name, font_size)
 
-
+    
 # --- list ops ---
 
 def copy_truish(the_list):
      return [entry for entry in the_list if entry]
 
 def remove_falsy(the_list):
-    new_list = copy_truish( the_list )
+    new_list = copy_truish(the_list)
     the_list.clear()
-    the_list.extend( new_list )
+    the_list.extend(new_list)
 
-    
 def copy_uniq(the_list):
     helper = set()
     result = []
     for entry in the_list:
         if not entry in helper:
-            helper.add( entry )
-            result.append( entry )
-    return ( result )
+            helper.add(entry)
+            result.append(entry)
+    return result
 
 def make_uniq(the_list):
     new_list = copy_uniq(the_list)
     the_list.clear()
-    the_list.extend( new_list )
-
+    the_list.extend(new_list)
 
 def prepend_or_move_to_front(entry, the_list):
-    the_list.insert( 0, entry )
+    the_list.insert(0, entry)
     make_uniq(the_list)
     
         
 # --- file ops ---
 
 def is_file_below_dir(file_path, dir_path):
-    file_dir_path = os.path.realpath( os.path.dirname(file_path) )
+    file_dir_path = os.path.realpath(os.path.dirname(file_path))
     dir_path = os.path.realpath(dir_path)
-    # log_debug(f"{file_path} vs {dir_path}")
     return file_dir_path.startswith(dir_path)
 
 def is_file_in_dir(file_path, dir_path):
-    file_dir_path = os.path.realpath( os.path.dirname(file_path) )
+    file_dir_path = os.path.realpath(os.path.dirname(file_path))
     dir_path = os.path.realpath(dir_path)
-    # log_debug(f"{file_path} vs {dir_path}")
     return dir_path == file_dir_path
     
 def execute_shell_command(command):
@@ -261,11 +213,7 @@ def execute_shell_command(command):
 
 def execute_shell_command_with_capture(command):
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    # log_debug(f"return code = {result.returncode}")
-    # log_debug(f"stdout = {result.stdout}")
-    # log_debug(f"stderr = {result.stderr}")
     return result
-
 
 def filter_for_files_in_directory(command, directory):
     result = subprocess.run(command, cwd=directory, shell=True, capture_output=True, text=True)
@@ -275,61 +223,39 @@ def filter_for_files_in_directory(command, directory):
 def filter_for_files(command):
     line_list = execute_shell_command_with_capture(command).stdout.splitlines()
     return [file for file in line_list if os.path.isfile(file)]
-        
 
 def list_image_files_by_command(dir, cmd):
     raw_output = subprocess.run(cmd, cwd=dir, shell=True, capture_output=True, text=True).stdout.splitlines()
     listing = []
     for path in raw_output:
         if os.path.isabs(path):
-            listing.append( os.path.normpath(path) )
+            listing.append(os.path.normpath(path))
         else:
-            listing.append( os.path.normpath( os.path.join(dir, path) ) )
-    # log_debug(f"choosing from {listing}")
+            listing.append(os.path.normpath(os.path.join(dir, path)))
     return [path for path in listing if is_image_file(path) and is_file_below_dir(path, dir)]
     
-    
 def move_file_to_directory(file_path, target_dir_path):
-    """
-    Moves a file or symlink to a new directory, preserving link validity for relative symlinks
-    """
-
-    # log_debug("enter:move_file_to_directory")
     try:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Source file or link not found: '{file_path}'")
-        
         if not os.path.isdir(target_dir_path):
             os.makedirs(target_dir_path, exist_ok=True)
-        
         item_name = os.path.basename(file_path)
-        new_path = os.path.normpath( os.path.join(target_dir_path, item_name) )
-
+        new_path = os.path.normpath(os.path.join(target_dir_path, item_name))
         if os.path.islink(file_path):
             link_target = os.readlink(file_path)
-            # log_debug(f"{file_path} is a symlink with target {link_target}.")
-           
             if os.path.isabs(link_target):
-                # If absolute, just move the symlink file itself.
                 shutil.move(file_path, new_path)
-                # log_debug(f"Moved absolute symlink '{item_name}' to '{target_dir_path}'")
             else:
-                # If relative, we must calculate the new relative path.
                 original_link_dir = os.path.dirname(os.path.abspath(file_path))
                 target_abs_path = os.path.normpath(os.path.join(original_link_dir, link_target))
                 new_link_dir = os.path.abspath(target_dir_path)
                 new_relative_path = os.path.relpath(target_abs_path, new_link_dir)
-                
-                # Remove the old link and create a new one with the corrected path.
                 os.remove(file_path)
                 os.symlink(new_relative_path, new_path)
-                # log_debug(f"Moved relative symlink '{item_name}' to '{target_dir_path}' and updated its target.")
         else:
             shutil.move(file_path, new_path)
-            # log_debug(f"Moved file '{item_name}' to '{target_dir_path}'")
-
-        return os.path.normpath( new_path )
-        
+        return os.path.normpath(new_path)
     except FileNotFoundError as e:
         log_error(f"Error: {e}")
         return None
@@ -343,7 +269,7 @@ def move_file_to_directory(file_path, target_dir_path):
         log_error(f"An unexpected error occurred: {e}")
         return None
 
-
+    
 # --- watch directory ---
 
 class DirectoryEventHandler(FileSystemEventHandler):
@@ -354,12 +280,11 @@ class DirectoryEventHandler(FileSystemEventHandler):
         
     def on_any_event(self, event):
         log_debug(f"directory {self.directory} has changed.")
-        QTimer.singleShot(0, self.image_picker.parent().broadcast_contents_change)
+        QTimer.singleShot(0, self.image_picker.master.broadcast_contents_change)
 
 
-class DirectoryWatcher(QObject):
+class DirectoryWatcher():
     def __init__(self, image_picker):
-        super().__init__(image_picker)
         self.image_picker = image_picker
         log_debug(f"Initializing watcher for picker {image_picker}")
         
@@ -384,40 +309,20 @@ class DirectoryWatcher(QObject):
 
 # --- image stuff / caching ---
 
-def is_image_file_name(file_name):
-    return file_name.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS)
-
-def is_image_file(file_path):
-    file_name = os.path.basename(file_path)
-    # log_debug(f"checking {file_path} / {file_name}")
-    return os.path.isfile(file_path) and is_image_file_name(file_name)
-
-def list_image_files(directory_path):
-    # log_debug(f"list image files in {directory_path}")
-    if not os.path.isdir(directory_path):
-        return []
-    full_paths = [os.path.join(directory_path, file) for file in os.listdir(directory_path)]
-    return [path for path in full_paths if is_image_file(path)]
-
 def resize_image(image, target_width, target_height):
     original_width, original_height = image.size
-
     if target_width <= 0 or target_height <= 0:
-        return image.copy() # Return a copy of the original or a small placeholder
-
+        return image.copy()
     target_aspect = target_width / target_height
     image_aspect = original_width / original_height
-
     if image_aspect > target_aspect:
         new_width = target_width
         new_height = int(target_width / image_aspect)
     else:
         new_height = target_height
         new_width = int(target_height * image_aspect)
-
     new_width = max(1, new_width)
     new_height = max(1, new_height)
-
     return image.resize((new_width, new_height), resample=Image.LANCZOS)
 
 def uniq_file_id(img_path, width=-1):
@@ -425,16 +330,16 @@ def uniq_file_id(img_path, width=-1):
         real_path = os.path.realpath(img_path)
         mtime = os.path.getmtime(real_path)
     except FileNotFoundError:
-        log_error(f"Error: Original image file not found for thumbnail generation: {img_path} resolves to {real_path}")
+        log_error(f"Error: Original image file not found: {img_path}")
         return None
     except Exception as e:
-        log_error(f"Warning: Could not get modification time for {real_path} (from {img_path}): {e}. Using a default value.")
+        log_error(f"Warning: Could not get modification time for {img_path}: {e}")
         mtime = 0
     key = f"{real_path}_{width}_{mtime}"
     return hashlib.sha256(key.encode('utf-8')).hexdigest()
 
-PIL_CACHE = OrderedDict() # cache for full size pictures
-QT_CACHE = OrderedDict()  # cache for QPixmap thumbnails, the pil is cached on disk
+PIL_CACHE = OrderedDict()
+QT_CACHE = OrderedDict()
 
 def get_full_size_image(img_path):
     cache_key = uniq_file_id(img_path)
@@ -446,7 +351,6 @@ def get_full_size_image(img_path):
         PIL_CACHE[cache_key] = full_image
         if len(PIL_CACHE) > CACHE_SIZE:
             PIL_CACHE.popitem(last=False)
-            assert len(PIL_CACHE) == CACHE_SIZE
         return full_image
     except Exception as e:
         log_error(f"Error loading image for {img_path}: {e}")
@@ -457,17 +361,12 @@ def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
     thumbnail_cache_subdir = os.path.join(THUMBNAIL_CACHE_ROOT, thumbnail_size_str)
     os.makedirs(thumbnail_cache_subdir, exist_ok=True)
     cached_thumbnail_path = os.path.join(thumbnail_cache_subdir, f"{cache_key}.png")
-
     pil_image_thumbnail = None
-
-    # try reading from on-disk cache
     if os.path.exists(cached_thumbnail_path):
         try:
             pil_image_thumbnail = Image.open(cached_thumbnail_path)
-            # log_debug(f"found {img_path} at size {thumbnail_max_size} on disk.")
         except Exception as e:
             log_error(f"Error loading thumbnail for {img_path}: {e}")
-
     if pil_image_thumbnail is None:
         try:
             pil_image_thumbnail = resize_image(get_full_size_image(img_path), thumbnail_max_size, thumbnail_max_size)
@@ -476,46 +375,39 @@ def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
             os.replace(tmp_path, cached_thumbnail_path)
         except Exception as e:
             log_error(f"Error creating thumbnail for {img_path}: {e}")
-
     return pil_image_thumbnail
 
 def get_or_make_pil(img_path, thumbnail_max_size):
     cache_key = uniq_file_id(img_path, thumbnail_max_size)
-    # log_debug(f"cache_key for {img_path} @ {thumbnail_max_size} is {cache_key}")
     return get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size)
 
-def make_qpixmap(pil_image):
+def pil_to_qpixmap(pil_image):
     if pil_image is None:
         return QPixmap()
-        
     if pil_image.mode not in ("RGB", "RGBA", "L", "1"):
         pil_image = pil_image.convert("RGBA")
-    
-    img_data = pil_image.tobytes("raw", "RGBA")
-    qimage = QImage(img_data, pil_image.size[0], pil_image.size[1], QImage.Format_RGBA8888)
-    return QPixmap.fromImage(qimage)
+    if pil_image.mode == "RGB":
+        data = pil_image.tobytes("raw", "RGB")
+        qimage = QImage(data, pil_image.width, pil_image.height, 3 * pil_image.width, QImage.Format_RGB888)
+    else:
+        data = pil_image.tobytes("raw", "RGBA")
+        qimage = QImage(data, pil_image.width, pil_image.height, 4 * pil_image.width, QImage.Format_RGBA8888)
+    return QPixmap.fromImage(qimage.copy())
 
-def get_or_make_qpixmap_by_key(cache_key, img_path, thumbnail_max_size):
+def get_or_make_qt_by_key(cache_key, img_path, thumbnail_max_size):
     if cache_key in QT_CACHE:
         QT_CACHE.move_to_end(cache_key)
         return QT_CACHE[cache_key]
-    
     pil_image = get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size)
-    if pil_image is None:
-        return QPixmap()
-        
-    qpixmap = make_qpixmap(pil_image)
-    QT_CACHE[cache_key] = qpixmap
-    
+    qt_pixmap = pil_to_qpixmap(pil_image)
+    QT_CACHE[cache_key] = qt_pixmap
     if len(QT_CACHE) > CACHE_SIZE:
         QT_CACHE.popitem(last=False)
-        assert len(QT_CACHE) == CACHE_SIZE
-    
-    return qpixmap
+    return qt_pixmap
      
-def get_or_make_qpixmap(img_path, thumbnail_max_size):
+def get_or_make_qt(img_path, thumbnail_max_size):
     cache_key = uniq_file_id(img_path, thumbnail_max_size)
-    return get_or_make_qpixmap_by_key(cache_key, img_path, thumbnail_max_size)
+    return get_or_make_qt_by_key(cache_key, img_path, thumbnail_max_size)
 
 
 # --- dialogue box ---
@@ -524,48 +416,48 @@ def fallback_show_error(title, message):
     QMessageBox.critical(None, title, message)
     
 def custom_message_dialog(parent, title, message, font=None):
-    if font is None:
-        font = QFont("Sans", 12)
-    
-    dialog = QMessageBox(parent)
+    dialog = QDialog(parent)
     dialog.setWindowTitle(title)
-    dialog.setText(message)
-    dialog.setFont(font)
-    dialog.setStandardButtons(QMessageBox.Ok)
+    x = parent.x() + parent.width() // 2 - 200
+    y = parent.y() + parent.height() // 2 - 100
+    dialog.setGeometry(x, y, 400, 300)
+    layout = QVBoxLayout(dialog)
+    layout.setContentsMargins(20, 20, 20, 20)
+    text_widget = QTextEdit()
+    text_widget.setReadOnly(True)
+    text_widget.setPlainText(message)
+    if font:
+        text_widget.setFont(font)
+    layout.addWidget(text_widget)
+    button_layout = QHBoxLayout()
+    button_layout.addStretch()
+    ok_button = QPushButton("OK")
+    ok_button.clicked.connect(dialog.accept)
+    ok_button.setFixedWidth(80)
+    button_layout.addWidget(ok_button)
+    layout.addLayout(button_layout)
+    ok_button.setFocus()
     dialog.exec()
 
     
 # --- Wallpaper Setting Functions (Platform-Specific) ---
 
 def set_wallpaper(image_path, error_callback=fallback_show_error):
-    # returns True if the WP was set and False if not
-
     if platform.system() != "Linux":
         error_callback("Unsupported OS", f"Wallpaper setting not supported on {platform.system()}.")
         return False
-        
     try:
         abs_path = os.path.abspath(image_path)
         file_uri = f"file://{abs_path}"
-        
-        # Detect desktop environment
         desktop_env = os.environ.get('XDG_CURRENT_DESKTOP', '').lower()
         if not desktop_env and os.environ.get('DESKTOP_SESSION'):
             desktop_env = os.environ.get('DESKTOP_SESSION').lower()
-            
         success = False
-        
-        # GNOME, Unity, Pantheon, Budgie
         if any(de in desktop_env for de in ['gnome', 'unity', 'pantheon', 'budgie']):
-            # Try GNOME 3 approach first (newer versions)
             subprocess.run(['gsettings', 'set', 'org.gnome.desktop.background', 'picture-uri', file_uri])
-            # For GNOME 40+ with dark mode support
             subprocess.run(['gsettings', 'set', 'org.gnome.desktop.background', 'picture-uri-dark', file_uri])
             success = True
-            
-        # KDE Plasma
         elif 'kde' in desktop_env:
-            # For KDE Plasma 5
             script = f"""
             var allDesktops = desktops();
             for (var i=0; i < allDesktops.length; i++) {{
@@ -575,72 +467,50 @@ def set_wallpaper(image_path, error_callback=fallback_show_error):
                 d.writeConfig("Image", "{abs_path}");
             }}
             """
-            subprocess.run([ "qdbus", "org.kde.plasmashell", "/PlasmaShell",  "org.kde.PlasmaShell.evaluateScript", script])
+            subprocess.run(["qdbus", "org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell.evaluateScript", script])
             success = True
-            
-        # XFCE
         elif 'xfce' in desktop_env:
-            # Get the current monitor
             try:
                 props = subprocess.check_output(['xfconf-query', '-c', 'xfce4-desktop', '-p', '/backdrop', '-l']).decode('utf-8')
                 monitors = set([p.split('/')[2] for p in props.splitlines() if p.endswith('last-image')])
-                
                 for monitor in monitors:
-                    # Find all properties for this monitor
                     monitor_props = [p for p in props.splitlines() if f'/backdrop/screen0/{monitor}/' in p and p.endswith('last-image')]
                     for prop in monitor_props:
-                        subprocess.run([ "xfconf-query", "-c", "xfce4-desktop",  "-p", f"{prop}",  "-s", f"{abs_path}" ])
+                        subprocess.run(["xfconf-query", "-c", "xfce4-desktop", "-p", f"{prop}", "-s", f"{abs_path}"])
                 success = True
             except:
-                # Fallback for older XFCE
-                subprocess.run([ "xfconf-query", "-c", "xfce4-desktop", "-p", "/backdrop/screen0/monitor0/workspace0/last-image", "-s", f"{abs_path}" ])
+                subprocess.run(["xfconf-query", "-c", "xfce4-desktop", "-p", "/backdrop/screen0/monitor0/workspace0/last-image", "-s", f"{abs_path}"])
                 success = True
-                
-        # Cinnamon
         elif 'cinnamon' in desktop_env:
-            subprocess.run([ "gsettings", "set", "org.cinnamon.desktop.background", "picture-uri", f"{file_uri}" ])
+            subprocess.run(["gsettings", "set", "org.cinnamon.desktop.background", "picture-uri", f"{file_uri}"])
             success = True
-            
-        # MATE
         elif 'mate' in desktop_env:
-            subprocess.run([ "gsettings", "set", "org.mate.background", "picture-filename", f"{abs_path}" ])
+            subprocess.run(["gsettings", "set", "org.mate.background", "picture-filename", f"{abs_path}"])
             success = True
-            
-        # LXQt, LXDE
         elif 'lxqt' in desktop_env or 'lxde' in desktop_env:
-            # For PCManFM-Qt
-            subprocess.run([ "pcmanfm-qt", f"--set-wallpaper={abs_path}" ])
-            # For PCManFM
-            subprocess.run([ "pcmanfm", f"--set-wallpaper={abs_path}" ])
+            subprocess.run(["pcmanfm-qt", f"--set-wallpaper={abs_path}"])
+            subprocess.run(["pcmanfm", f"--set-wallpaper={abs_path}"])
             success = True
-            
-        # i3wm, sway and other tiling window managers often use feh
         elif any(de in desktop_env for de in ['i3', 'sway']):
-            subprocess.run([ "feh", "--bg-fill", f"{abs_path}" ])
+            subprocess.run(["feh", "--bg-fill", f"{abs_path}"])
             success = True
-            
-        # Fallback method using feh (works for many minimal window managers)
         elif not success:
-            # Try generic methods
             methods = [
-                [ "feh", "--bg-fill", f"{abs_path}" ],
-                [ "nitrogen", "--set-scaled", f"{abs_path}" ],
-                [ "gsettings", "set", "org.gnome.desktop.background", "picture-uri", f"{file_uri}" ]
+                ["feh", "--bg-fill", f"{abs_path}"],
+                ["nitrogen", "--set-scaled", f"{abs_path}"],
+                ["gsettings", "set", "org.gnome.desktop.background", "picture-uri", f"{file_uri}"]
             ]
-            
             for method in methods:
                 exit_code = subprocess.run(method)
                 if exit_code == 0:
                     success = True
                     break
-                    
         if success:
             return True
         else:
             error_callback("Desktop Environment Not Detected", 
-                           f"Couldn't detect your desktop environment ({desktop_env}). Try installing 'feh' package and retry.")
+                           f"Couldn't detect your desktop environment ({desktop_env}).")
             return False
-            
     except Exception as e:
         error_callback("Wallpaper Error", f"Failed to set wallpaper: {e}")
         return False
@@ -654,18 +524,15 @@ def get_parent_directory(path):
 def list_subdirectories(parent_directory_path):
     if not os.path.isdir(parent_directory_path):
         return []
-
     subdirectories = []
     for item_name in os.listdir(parent_directory_path):
         item_path = os.path.join(parent_directory_path, item_name)
         if os.path.isdir(item_path):
             subdirectories.append(item_path)
-    
-    subdirectories.sort() # Optional: keep the list sorted
+    subdirectories.sort()
     return subdirectories
 
 def list_relevant_files(dir_path):
-    # log_debug(f"list relevant files for {dir_path}")
     file_list = list_image_files(dir_path)
     file_list.extend(list_image_files(get_parent_directory(dir_path)))
     for subdir in list_subdirectories(dir_path):
@@ -673,23 +540,8 @@ def list_relevant_files(dir_path):
     return file_list
 
 
-class BackgroundWorker(QObject):
-    finished = Signal()
-    
-    def __init__(self, path, width):
-        super().__init__()
-        self.keep_running = True
-        self.current_size = width
-        self.current_dir = path
-        self.path_name_queue = queue.Queue()
-        self.block = threading.Event()
-        
-        self.worker_thread = QThread()
-        self.moveToThread(self.worker_thread)
-        self.worker_thread.started.connect(self.process)
-        self.worker_thread.start()
-    
-    def process(self):
+class BackgroundWorker:
+    def background(self):
         while self.keep_running:
             old_size = self.current_size
             old_directory = self.current_dir
@@ -699,13 +551,23 @@ class BackgroundWorker(QObject):
                     return
                 self.barrier()
                 if self.keep_running and (old_size == self.current_size) and (old_directory == self.current_dir):
-                    # log_debug(f"background: {path_name}")
                     self.path_name_queue.put(path_name)
                 else:
                     break
             while self.keep_running and (old_size == self.current_size) and (old_directory == self.current_dir):
                 time.sleep(2)
 
+    def __init__(self, path, width):
+        self.keep_running = True
+        self.current_size = width
+        self.current_dir = path
+        self.path_name_queue = queue.Queue()
+        self.worker = threading.Thread(target=self.background)
+        self.block = threading.Event()
+        self.worker.daemon = True
+        self.worker.start()
+        self.pause()
+        
     def pause(self):
         self.block.clear()
 
@@ -724,1000 +586,1507 @@ class BackgroundWorker(QObject):
     def stop(self):
         self.keep_running = False
         self.resume()
-        if self.worker_thread.isRunning():
-            self.worker_thread.quit()
-            self.worker_thread.wait()
+        
+
+def is_image_file_name(file_name):
+    return file_name.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS)
+        
+def is_image_file(file_path):
+    file_name = os.path.basename(file_path)
+    return os.path.isfile(file_path) and is_image_file_name(file_name)
+        
+def list_image_files(directory_path):
+    if not os.path.isdir(directory_path):
+        return []
+    full_paths = [os.path.join(directory_path, file) for file in os.listdir(directory_path)]
+    return [path for path in full_paths if is_image_file(path)]
 
 
 # --- drag and drop support ---
 
-class DragHelper(QObject):
-    """Helper class to manage drag and drop functionality"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.drag_timer = None
-        self.drag_start_pos = None
-        self.dragging_widget = None
-        self.drag_object = None
-        self.drag_threshold = 5
-        self.drag_delay_ms = 250
-        
-    def start_tracking(self, widget, event, make_ghost, click_handler, button=Qt.LeftButton,
-                      drop_handler='handle_drop', right_drop_handler=None):
-        """Begin tracking a potential drag operation"""
-        if self.drag_timer and self.drag_timer.isActive():
-            self.drag_timer.stop()
-            
-        self.drag_start_pos = event.globalPos()
-        self.dragging_widget = widget
-        self.make_ghost = make_ghost
-        self.click_handler = click_handler
-        self.drop_handler = drop_handler
-        self.right_drop_handler = right_drop_handler
-        self.button = button
-        
-        # Set up the timer for delayed drag start
-        self.drag_timer = QTimer()
-        self.drag_timer.setSingleShot(True)
-        self.drag_timer.timeout.connect(self.start_drag)
-        self.drag_timer.start(self.drag_delay_ms)
-        
-    def process_motion(self, event):
-        """Handle mouse motion during potential drag operation"""
-        if not self.drag_timer or not self.drag_start_pos:
-            return False
-            
-        # Calculate distance moved
-        delta = (event.globalPos() - self.drag_start_pos)
-        distance = math.sqrt(delta.x()**2 + delta.y()**2)
-        
-        # If moved beyond threshold, start drag
-        if distance > self.drag_threshold:
-            self.drag_timer.stop()
-            self.start_drag()
-            return True
-            
-        return False
-    
-    def process_release(self, event):
-        """Handle button release event"""
-        if not self.drag_timer:
-            return False
-            
-        if self.drag_timer.isActive():
-            # If timer is still active, it's a click not a drag
-            self.drag_timer.stop()
-            if self.click_handler:
-                self.click_handler(event)
-            result = True
-        else:
-            # Drag was in progress, handle drop
-            result = False
-            
-        self.reset()
-        return result
-    
-    def start_drag(self):
-        """Start the actual dragging operation"""
-        if not self.dragging_widget or not self.make_ghost:
-            return
-        
-        self.drag_object = QDrag(self.dragging_widget)
-        
-        # Create ghost/preview image for dragging
-        ghost_pixmap = self.make_ghost(self.dragging_widget, 
-                                   self.drag_start_pos.x(), 
-                                   self.drag_start_pos.y())
-        
-        if isinstance(ghost_pixmap, QPixmap):
-            self.drag_object.setPixmap(ghost_pixmap)
-            # Set hotspot to center of pixmap
-            self.drag_object.setHotSpot(QPoint(ghost_pixmap.width()//2, ghost_pixmap.height()//2))
-        
-        # Set up MIME data with custom format
-        mime_data = QMimeData()
-        mime_data.setData("application/x-kubux-image-item", QByteArray())
-        self.drag_object.setMimeData(mime_data)
-        
-        # Execute the drag operation
-        drop_action = self.drag_object.exec_(Qt.CopyAction | Qt.MoveAction)
-        
-        # Clean up
-        self.reset()
-    
-    def find_drop_target(self, position):
-        """Find suitable drop target widget at given position"""
-        app = QApplication.instance()
-        widget = app.widgetAt(position)
-        
-        if not widget:
-            return None
-            
-        # Try to find a parent that can handle our drop
-        while widget:
-            if hasattr(widget, self.drop_handler):
-                return widget
-            
-            if self.right_drop_handler and hasattr(widget, self.right_drop_handler):
-                return widget
-                
-            widget = widget.parent()
-            
-        return None
-    
-    def reset(self):
-        """Reset all drag tracking state"""
-        self.drag_timer = None
-        self.drag_start_pos = None
-        self.dragging_widget = None
-        self.drag_object = None
+DRAG_DELAY_MS = 250
+DRAG_THRESHOLD = 5
 
 
-# --- UI components ---
+# --- helper to get font from widget hierarchy ---
+
+def get_font(widget):
+    while widget.parent() is not None:
+        widget = widget.parent()
+    if hasattr(widget, 'main_font'):
+        return widget.main_font
+    return get_linux_ui_font()
+
+
+# --- widgets ---
+
+class EditableLabelWithCopy(QWidget):
+    def __init__(self, master, initial_text="", info="", on_rename_callback=None, font=None, **kwargs):
+        super().__init__(master)
+        
+        self.original_text = initial_text
+        self.info = info
+        self.on_rename_callback = on_rename_callback
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(5)
+
+        self.label = QLabel(info)
+        if font:
+            self.label.setFont(font)
+        layout.addWidget(self.label)
+        
+        self.entry = QLineEdit(initial_text)
+        if font:
+            self.entry.setFont(font)
+        layout.addWidget(self.entry, 1)
+        
+        self.copy_button = QPushButton("Copy")
+        if font:
+            self.copy_button.setFont(font)
+        self.copy_button.clicked.connect(self._copy_to_clipboard)
+        layout.addWidget(self.copy_button)
+        
+        self.entry.returnPressed.connect(self._on_enter_pressed)
+
+    def set_info(self, text):
+        self.info = text
+        self.label.setText(text)
+        
+    def set_text(self, text):
+        self.entry.setText(text)
+        self.original_text = text
+        
+    def get_text(self):
+        return self.entry.text()
+    
+    def _copy_to_clipboard(self):
+        text = self.entry.text()
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        
+        original_style = self.entry.styleSheet()
+        self.entry.setStyleSheet("background-color: #90EE90; color: #000000;")
+        QTimer.singleShot(200, lambda: self.entry.setStyleSheet(original_style))
+
+    def _on_enter_pressed(self):
+        self._rename()
+        
+    def _rename(self):
+        new_text = self.entry.text()
+        if new_text != self.original_text and self.on_rename_callback:
+            self.on_rename_callback(self.original_text, new_text)
+            self.original_text = new_text
+
 
 class ImageViewer(QMainWindow):
-    """Image viewer window - displays a single image with zoom and pan capabilities"""
-    
-    def __init__(self, parent, image_info):
-        super().__init__(parent)
-        self.setAttribute(Qt.WA_DeleteOnClose)
-        self.setWindowTitle("Image Viewer")
-        
-        # Extract image info
+    def __init__(self, master, image_info):
+        super().__init__(master)
+        self.master = master
+        self.setWindowTitle("kubux-image-manager")
         self.image_path = image_info[0]
-        self.window_geometry = image_info[1]
-        self.is_fullscreen = image_info[2]
-        
         self.file_name = os.path.basename(self.image_path)
         self.dir_name = os.path.dirname(self.image_path)
-        
-        # Image state
+        self.window_geometry = image_info[1]
+        self.is_fullscreen = image_info[2]
         self.original_image = get_full_size_image(self.image_path)
-        self.display_pixmap = QPixmap()
-        self.fit_to_window = True
-        self.zoom_factor = 1.0
-        
-        # Pan state
-        self.panning = False
-        self.pan_start_x = 0
-        self.pan_start_y = 0
-        
-        # Set up UI
-        self._create_ui()
-        self._setup_shortcuts()
-        
-        # Apply stored geometry if available
-        if self.window_geometry:
-            self.restoreGeometry(QByteArray.fromHex(self.window_geometry.encode()))
-        else:
-            # Default size if no geometry is provided
-            self.resize(1024, 768)
-            
-        # Update initial image
-        self._update_display_image()
-        
-        # Apply fullscreen mode
-        self.set_screen_mode(self.is_fullscreen)
-        
-        # Show the window
-        self.show()
-        self.activateWindow()
-        self.raise_()
-    
-    def _create_ui(self):
-        """Create the UI components for the viewer"""
+        self.display_image = None
+        self.photo_image = None
+
+        if self.window_geometry is not None:
+            self.restoreGeometry(QByteArray.fromBase64(self.window_geometry.encode()))
+
+        w, h = self.original_image.size
+        x = w
+        y = h
+        while x < 1000 and y < 600:
+            x = 1.1 * x
+            y = 1.1 * y
+        while 1300 < x or 900 < y:
+            x = x / 1.1
+            y = y / 1.1
+
+        canvas_width = int(x)
+        canvas_height = int(y)
+
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
-        
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        
-        # Create scroll area for the image
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
-        self.scroll_area.setBackgroundRole(QPalette.Dark)
-        
-        # Create image label
-        self.image_label = QLabel()
-        self.image_label.setBackgroundRole(QPalette.Base)
-        self.image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        self.image_label.setScaledContents(False)
-        self.image_label.setAlignment(Qt.AlignCenter)
-        
-        # Set up mouse tracking for panning
-        self.image_label.setMouseTracking(True)
-        
-        # Set up mouse events
-        self.image_label.mousePressEvent = self._on_mouse_press
-        self.image_label.mouseMoveEvent = self._on_mouse_move
-        self.image_label.mouseReleaseEvent = self._on_mouse_release
-        self.image_label.wheelEvent = self._on_mouse_wheel
-        
-        # Add label to scroll area
-        self.scroll_area.setWidget(self.image_label)
-        
-        # Add scroll area to main layout
-        main_layout.addWidget(self.scroll_area)
-        
-        # Create filename widget at the bottom
+
         self.filename_widget = EditableLabelWithCopy(
             central_widget,
             initial_text=self.file_name,
-            info="",
-            font=get_linux_ui_font()
+            info=f"{w}x{h}",
+            on_rename_callback=self._rename_current_image,
+            font=get_font(self)
         )
-        self.filename_widget.rename_requested.connect(self._rename_current_image)
+
+        self.image_frame = QWidget(central_widget)
+        image_layout = QGridLayout(self.image_frame)
+        image_layout.setContentsMargins(0, 0, 0, 0)
+        image_layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(False)
+        self.scroll_area.setAlignment(Qt.AlignCenter)
+        self.scroll_area.setStyleSheet("background-color: black;")
         
-        # Add filename widget to main layout
+        self.canvas = QLabel()
+        self.canvas.setAlignment(Qt.AlignCenter)
+        self.canvas.setStyleSheet("background-color: black;")
+        self.scroll_area.setWidget(self.canvas)
+
+        image_layout.addWidget(self.scroll_area, 0, 0)
+        image_layout.setRowStretch(0, 1)
+        image_layout.setColumnStretch(0, 1)
+
+        main_layout.addWidget(self.image_frame, 1)
         main_layout.addWidget(self.filename_widget)
-        
-        # Set image dimensions in info label
-        if self.original_image:
-            w, h = self.original_image.size
-            self.filename_widget.set_info(f"{w}x{h}")
-        
-        # Set focus
-        self.setFocus()
-        
-    def _setup_shortcuts(self):
-        """Set up keyboard shortcuts"""
-        # Zoom in/out shortcuts
-        zoom_in_action = QAction(self)
-        zoom_in_action.setShortcut(Qt.Key_Plus)
-        zoom_in_action.triggered.connect(self._zoom_in)
-        self.addAction(zoom_in_action)
-        
-        zoom_out_action = QAction(self)
-        zoom_out_action.setShortcut(Qt.Key_Minus)
-        zoom_out_action.triggered.connect(self._zoom_out)
-        self.addAction(zoom_out_action)
-        
-        # Reset zoom
-        reset_zoom_action = QAction(self)
-        reset_zoom_action.setShortcut(Qt.Key_0)
-        reset_zoom_action.triggered.connect(self._reset_zoom)
-        self.addAction(reset_zoom_action)
-        
-        # Fullscreen
-        fullscreen_action = QAction(self)
-        fullscreen_action.setShortcut(Qt.Key_F)
-        fullscreen_action.triggered.connect(self.toggle_fullscreen)
-        self.addAction(fullscreen_action)
-        
-        # F11 also toggles fullscreen
-        f11_action = QAction(self)
-        f11_action.setShortcut(Qt.Key_F11)
-        f11_action.triggered.connect(self.toggle_fullscreen)
-        self.addAction(f11_action)
-        
-        # Escape to close if fullscreen, otherwise just close on Escape
-        escape_action = QAction(self)
-        escape_action.setShortcut(Qt.Key_Escape)
-        escape_action.triggered.connect(self._on_escape)
-        self.addAction(escape_action)
-    
-    def _update_display_image(self):
-        """Update the displayed image based on current zoom settings"""
-        if not self.original_image:
-            return
-            
-        # Get the original image dimensions
-        orig_width, orig_height = self.original_image.size
-        
-        # Calculate target dimensions based on fit mode and zoom factor
-        if self.fit_to_window:
-            # Calculate available space
-            view_width = self.scroll_area.viewport().width()
-            view_height = self.scroll_area.viewport().height()
-            
-            if view_width <= 1 or view_height <= 1:
-                view_width = 800
-                view_height = 600
-            
-            # Calculate scale to fit
-            scale_width = view_width / orig_width
-            scale_height = view_height / orig_height
-            scale = min(scale_width, scale_height)
-            
-            # Update zoom factor based on fit
-            self.zoom_factor = scale
-            
-            # Calculate new dimensions
-            new_width = int(orig_width * scale)
-            new_height = int(orig_height * scale)
-        else:
-            # Use current zoom factor
-            new_width = int(orig_width * self.zoom_factor)
-            new_height = int(orig_height * self.zoom_factor)
-        
-        # Create the resized pixmap
-        pil_image = resize_image(self.original_image, new_width, new_height)
-        self.display_pixmap = make_qpixmap(pil_image)
-        
-        # Update the label with new pixmap
-        self.image_label.setPixmap(self.display_pixmap)
-        self.image_label.resize(self.display_pixmap.size())
-        
-        # Update scroll area if needed
-        if self.fit_to_window:
-            # Center the image when it fits the view
-            self.scroll_area.horizontalScrollBar().setValue(0)
-            self.scroll_area.verticalScrollBar().setValue(0)
-    
+
+        self.zoom_factor = x / w
+        self.fit_to_window = True
+        self.pan_start_x = 0
+        self.pan_start_y = 0
+        self.panning = False
+
+        self.resize(canvas_width, canvas_height + 40)
+        self._update_title()
+        self._update_image()
+
+        self.scroll_area.setMouseTracking(True)
+        self.canvas.setMouseTracking(True)
+        self.canvas.mousePressEvent = self._on_mouse_down
+        self.canvas.mouseMoveEvent = self._on_mouse_drag
+        self.canvas.mouseReleaseEvent = self._on_mouse_up
+        self.canvas.wheelEvent = self._on_mouse_wheel
+
+        self.set_screen_mode(self.is_fullscreen)
+        self.show()
+        self.activateWindow()
+        self.canvas.setFocus()
+
+    def get_image_info(self):
+        geom = self.saveGeometry().toBase64().data().decode()
+        return self.image_path, geom, self.is_fullscreen
+
     def set_screen_mode(self, is_fullscreen):
-        """Set fullscreen mode on or off"""
-        self.is_fullscreen = is_fullscreen
         if is_fullscreen:
             self.showFullScreen()
         else:
             self.showNormal()
-        
-        # Update image after screen mode change
-        self._update_display_image()
-    
+        self.is_fullscreen = is_fullscreen
+        QTimer.singleShot(100, self._update_image)
+
     def toggle_fullscreen(self):
-        """Toggle fullscreen mode"""
-        self.set_screen_mode(not self.is_fullscreen)
-    
-    def _zoom_in(self):
-        """Zoom in the image"""
+        self.is_fullscreen = not self.is_fullscreen
+        self.set_screen_mode(self.is_fullscreen)
+
+    def _update_title(self):
+        title = f"{self.file_name} (file)"
+        try:
+            if os.path.islink(self.image_path):
+                title = f"{self.file_name} (symlink to {os.path.realpath(self.image_path)})"
+        except Exception as e:
+            title = "oops"
+        self.setWindowTitle(title)
+
+    def _update_image(self):
+        if not self.original_image:
+            return
+        canvas_width = self.scroll_area.viewport().width()
+        canvas_height = self.scroll_area.viewport().height()
+        if canvas_width <= 1:
+            canvas_width = 800
+        if canvas_height <= 1:
+            canvas_height = 600
+        orig_width, orig_height = self.original_image.size
+        if self.fit_to_window:
+            scale_width = canvas_width / orig_width
+            scale_height = canvas_height / orig_height
+            scale = min(scale_width, scale_height)
+            self.zoom_factor = scale
+            new_width = int(orig_width * scale)
+            new_height = int(orig_height * scale)
+        else:
+            new_width = int(orig_width * self.zoom_factor)
+            new_height = int(orig_height * self.zoom_factor)
+
+        self.display_image = resize_image(self.original_image, new_width, new_height)
+        pixmap = pil_to_qpixmap(self.display_image)
+        self.canvas.setPixmap(pixmap)
+        self.canvas.resize(pixmap.size())
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == Qt.Key_Plus or key == Qt.Key_Equal:
+            self._zoom_in()
+        elif key == Qt.Key_Minus or key == Qt.Key_Underscore:
+            self._zoom_out()
+        elif key == Qt.Key_0:
+            self.fit_to_window = True
+            self._update_image()
+        elif key == Qt.Key_F:
+            self.toggle_fullscreen()
+        elif key == Qt.Key_F11:
+            self.toggle_fullscreen()
+        elif key == Qt.Key_Escape:
+            self._close()
+        else:
+            super().keyPressEvent(event)
+
+    def _on_mouse_down(self, event):
+        if event.button() == Qt.LeftButton:
+            self.panning = True
+            self.pan_start_x = event.globalX()
+            self.pan_start_y = event.globalY()
+            self.canvas.setCursor(Qt.ClosedHandCursor)
+
+    def _on_mouse_drag(self, event):
+        if not self.panning:
+            return
+        dx = self.pan_start_x - event.globalX()
+        dy = self.pan_start_y - event.globalY()
+        h_bar = self.scroll_area.horizontalScrollBar()
+        v_bar = self.scroll_area.verticalScrollBar()
+        h_bar.setValue(h_bar.value() + dx)
+        v_bar.setValue(v_bar.value() + dy)
+        self.pan_start_x = event.globalX()
+        self.pan_start_y = event.globalY()
+
+    def _on_mouse_up(self, event):
+        if event.button() == Qt.LeftButton:
+            self.panning = False
+            self.canvas.setCursor(Qt.ArrowCursor)
+
+    def _on_mouse_wheel(self, event):
+        delta = event.angleDelta().y()
+        if delta > 0:
+            self._zoom_in(event.position().x(), event.position().y())
+        else:
+            self._zoom_out(event.position().x(), event.position().y())
+
+    def resizeEvent(self, event):
+        if self.fit_to_window:
+            self._update_image()
+        super().resizeEvent(event)
+
+    def _zoom_in(self, x=None, y=None):
         self.fit_to_window = False
         self.zoom_factor *= 1.25
-        self._update_display_image()
-        
-    def _zoom_out(self):
-        """Zoom out the image"""
+        self._update_image()
+
+    def _zoom_out(self, x=None, y=None):
         self.fit_to_window = False
         self.zoom_factor /= 1.25
-        
-        # Limit minimum zoom
         min_zoom = 0.1
         if self.zoom_factor < min_zoom:
             self.fit_to_window = True
-            
-        self._update_display_image()
-    
-    def _reset_zoom(self):
-        """Reset zoom to fit the window"""
-        self.fit_to_window = True
-        self._update_display_image()
-    
-    def _on_mouse_press(self, event):
-        """Handle mouse button press"""
-        if event.button() == Qt.LeftButton:
-            # Start panning
-            self.panning = True
-            self.pan_start_x = event.x()
-            self.pan_start_y = event.y()
-            self.setCursor(Qt.ClosedHandCursor)
-    
-    def _on_mouse_move(self, event):
-        """Handle mouse movement"""
-        if self.panning:
-            # Calculate the distance moved
-            dx = self.pan_start_x - event.x()
-            dy = self.pan_start_y - event.y()
-            
-            # Update scrollbars
-            hbar = self.scroll_area.horizontalScrollBar()
-            vbar = self.scroll_area.verticalScrollBar()
-            hbar.setValue(hbar.value() + dx)
-            vbar.setValue(vbar.value() + dy)
-            
-            # Update starting point for next movement
-            self.pan_start_x = event.x()
-            self.pan_start_y = event.y()
-    
-    def _on_mouse_release(self, event):
-        """Handle mouse button release"""
-        if event.button() == Qt.LeftButton and self.panning:
-            self.panning = False
-            self.setCursor(Qt.ArrowCursor)
-    
-    def _on_mouse_wheel(self, event):
-        """Handle mouse wheel for zooming"""
-        delta = event.angleDelta().y()
-        
-        if delta > 0:
-            # Zoom in
-            self._zoom_in()
-        else:
-            # Zoom out
-            self._zoom_out()
-    
-    def _on_escape(self):
-        """Handle Escape key press"""
-        if self.is_fullscreen:
-            # Exit fullscreen mode
-            self.toggle_fullscreen()
-        else:
-            # Close the window
-            self.close()
-    
+        self._update_image()
+
     def _rename_current_image(self, old_name, new_name):
-        """Rename the current image file"""
         try:
             new_path = os.path.join(self.dir_name, new_name)
             if os.path.exists(new_path):
                 return
-                
             os.rename(self.image_path, new_path)
             self.image_path = new_path
             self.file_name = os.path.basename(self.image_path)
-            self.setWindowTitle(f"{self.file_name}")
         except Exception as e:
-            log_error(f"Error renaming file from {old_name} to {new_name}: {e}")
-    
-    def get_image_info(self):
-        """Return information about the current image view"""
-        # Convert geometry to hex string for storage
-        geometry_hex = self.saveGeometry().toHex().data().decode()
-        return self.image_path, geometry_hex, self.is_fullscreen
-    
+            log_error(f"renaming file {old_name} to {new_name} failed, error: {e}")
+        self._update_title()
+
+    def _close(self):
+        if self.is_fullscreen:
+            self.toggle_fullscreen()
+        self.master.open_images.remove(self)
+        self.close()
+
     def closeEvent(self, event):
-        """Handle window close event"""
-        if self.parent():
-            # Notify parent that we're closing
-            self.parent().remove_image_viewer(self)
+        if self in self.master.open_images:
+            self.master.open_images.remove(self)
         event.accept()
+
+
+class ThumbnailButton(QPushButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.img_path = None
+        self.cache_key = None
+        self.qt_image = None
+        self.setFlat(True)
+        self.setCursor(Qt.PointingHandCursor)
+
+
+class DirectoryThumbnailGrid(QWidget):
+    def __init__(self, master, directory_path="", list_cmd="ls", item_width=None, item_border_width=None,
+                 static_button_config_callback=None, dynamic_button_config_callback=None, **kwargs):
+        super().__init__(master)
+        self._item_border_width = item_border_width
+        self._directory_path = directory_path
+        self._list_cmd = list_cmd
+        self._item_width = item_width
+        self._static_button_config_callback = static_button_config_callback
+        self._dynamic_button_config_callback = dynamic_button_config_callback
+        self._widget_cache = OrderedDict()
+        self._cache_size = 2000
+        self._active_widgets = {}
+        self._last_known_width = -1
+        self._files = []
+
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(4)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+
+    def get_width_and_height(self):
+        self.updateGeometry()
+        return self.sizeHint().width(), self.sizeHint().height()
+
+    def set_size_path_and_command(self, width, path, list_cmd):
+        self._directory_path = path
+        self._item_width = width
+        self._list_cmd = list_cmd
+        return self.regrid()
+
+    def _get_button(self, img_path, width, pre_cache=True):
+        cache_key = uniq_file_id(img_path, width)
+        btn = self._widget_cache.get(cache_key, None)
+        if btn is None:
+            qt_image = get_or_make_qt_by_key(cache_key, img_path, width)
+            btn = ThumbnailButton(self)
+            btn.cache_key = cache_key
+            btn.qt_image = qt_image
+            btn.setIcon(QIcon(qt_image))
+            btn.setIconSize(qt_image.size())
+            self._widget_cache[cache_key] = btn
+            if self._static_button_config_callback:
+                self._static_button_config_callback(btn, img_path)
+        else:
+            self._widget_cache.move_to_end(cache_key)
+        return btn
+
+    def refresh(self):
+        for img_path, btn in self._active_widgets.items():
+            if self._dynamic_button_config_callback:
+                self._dynamic_button_config_callback(btn, img_path)
+        return self.get_width_and_height()
+
+    def regrid(self):
+        old_files = self._files
+        self._files = list_image_files_by_command(self._directory_path, self._list_cmd)
+        if self._files == old_files:
+            return self.refresh()
+        return self.redraw()
+
+    def redraw(self):
+        for btn in self._active_widgets.values():
+            if btn is not None:
+                self._layout.removeWidget(btn)
+                btn.hide()
+        self._active_widgets = {}
+        for img_path in self._files:
+            btn = self._get_button(img_path, self._item_width, pre_cache=False)
+            if self._dynamic_button_config_callback:
+                self._dynamic_button_config_callback(btn, img_path)
+            self._active_widgets[img_path] = btn
+        return self._layout_the_grid()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        current_width = event.size().width()
+        if current_width <= 0 or current_width == self._last_known_width:
+            return
+        self._last_known_width = current_width
+        self._layout_the_grid()
+
+    def _calculate_columns(self, frame_width):
+        if frame_width <= 0:
+            return 1
+        item_total_occupancy_width = self._item_width + (2 * self._item_border_width)
+        buffer_for_gutters_and_edges = 10
+        available_width_for_items = frame_width - buffer_for_gutters_and_edges
+        if available_width_for_items <= 0:
+            return 1
+        calculated_cols = max(1, available_width_for_items // item_total_occupancy_width)
+        return calculated_cols
+
+    def _layout_the_grid(self):
+        parent_width = self.parent().width() if self.parent() else self.width()
+        desired_content_cols = self._calculate_columns(parent_width)
+        if desired_content_cols == 0:
+            desired_content_cols = 1
+
+        for i, img_path in enumerate(self._active_widgets.keys()):
+            widget = self._active_widgets.get(img_path)
+            if widget is None:
+                continue
+            row, col_idx = divmod(i, desired_content_cols)
+            widget.show()
+            self._layout.addWidget(widget, row, col_idx)
+
+        while len(self._widget_cache) > self._cache_size:
+            self._widget_cache.popitem(last=False)
+
+        return self.get_width_and_height()
+
+
+class LongMenu(QDialog):
+    def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None,
+                 pos="bottom", n_lines=12):
+        super().__init__(master, Qt.Popup | Qt.FramelessWindowHint)
+        self.result = default_option
+        self._options = other_options
+        self._main_font = font if font else get_font(self)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        max_length = max((len(line) for line in self._options), default=10) + 5
+
+        self._listbox = QListWidget()
+        self._listbox.setFont(self._main_font)
+        fm = QFontMetrics(self._main_font)
+        char_width = fm.averageCharWidth()
+        self._listbox.setMinimumWidth(char_width * max_length)
+        self._listbox.setMinimumHeight(fm.height() * min(n_lines, len(self._options)))
+
+        for option_name in other_options:
+            self._listbox.addItem(option_name)
+
+        layout.addWidget(self._listbox)
+
+        self._listbox.itemClicked.connect(self._on_listbox_select)
+        self._listbox.itemDoubleClicked.connect(self._on_double_click)
+
+        self.adjustSize()
+
+        if x_pos is None or y_pos is None:
+            master_pos = master.mapToGlobal(QPoint(0, 0))
+            x_pos = master_pos.x()
+            y_pos = master_pos.y() + master.height()
+
+        if pos == "top":
+            y_pos = y_pos - self.height()
+        elif pos == "center":
+            y_pos = y_pos - int(0.5 * self.height())
+        if y_pos < 0:
+            y_pos = 0
+
+        screen = QApplication.primaryScreen().geometry()
+        if x_pos + self.width() > screen.width():
+            x_pos = screen.width() - self.width() - 5
+        if y_pos + self.height() > screen.height():
+            y_pos = screen.height() - self.height() - 5
+
+        self.move(int(x_pos), int(y_pos))
+        self._listbox.setFocus()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            self._exit_ok()
+        elif event.key() == Qt.Key_Escape:
+            self._cancel()
+        else:
+            super().keyPressEvent(event)
+
+    def _on_listbox_select(self, item):
+        self._exit_ok()
+
+    def _on_double_click(self, item):
+        self._exit_ok()
+
+    def _exit_ok(self):
+        current_item = self._listbox.currentItem()
+        if current_item:
+            self.result = current_item.text()
+        else:
+            row = self._listbox.currentRow()
+            if row >= 0 and row < len(self._options):
+                self.result = self._options[row]
+        self.accept()
+
+    def _cancel(self):
+        self.result = None
+        self.reject()
+
+
+class BreadCrumNavigator(QWidget):
+    def __init__(self, master, on_navigate_callback=None, font=None,
+                 long_press_threshold_ms=400, drag_threshold_pixels=5):
+        super().__init__(master)
+        self._on_navigate_callback = on_navigate_callback
+        self._current_path = ""
+        self._LONG_PRESS_THRESHOLD_MS = long_press_threshold_ms
+        self._DRAG_THRESHOLD_PIXELS = drag_threshold_pixels
+        self._long_press_timer = None
+        self._press_start_time = 0
+        self._press_x = 0
+        self._press_y = 0
+        self._active_button = None
+
+        if font is None:
+            self.font = get_font(self)
+        else:
+            self.font = font
+
+        self._layout = QHBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+
+    def set_path(self, path):
+        if not os.path.isdir(path):
+            return
+        self._current_path = os.path.normpath(path)
+        self._update_breadcrumbs()
+
+    def _update_breadcrumbs(self):
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        btn_list = []
+        current_display_path = self._current_path
+        while len(current_display_path) > 1:
+            path = current_display_path
+            current_display_path = os.path.dirname(path)
+            btn_text = os.path.basename(path)
+            if btn_text == '':
+                btn_text = os.path.sep
+            btn = QPushButton(btn_text)
+            btn.setFlat(True)
+            btn.setFont(self.font)
+            btn.path = path
+            btn.pressed.connect(lambda b=btn: self._on_button_press(b))
+            btn.released.connect(lambda b=btn: self._on_button_release(b))
+            btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn.customContextMenuRequested.connect(lambda pos, b=btn: self._on_button_press_menu(b))
+            btn_list.insert(0, btn)
+
+        btn_text = "//"
+        btn = QPushButton(btn_text)
+        btn.setFlat(True)
+        btn.setFont(self.font)
+        btn.path = current_display_path
+        btn.pressed.connect(lambda b=btn: self._on_button_press(b))
+        btn.released.connect(lambda b=btn: self._on_button_release(b))
+        btn_list.insert(0, btn)
+
+        self._layout.addStretch()
+        for i, btn in enumerate(reversed(btn_list)):
+            self._layout.addWidget(btn)
+            if i + 1 < len(btn_list):
+                sep = QLabel("/")
+                self._layout.addWidget(sep)
+            if i == 0:
+                btn.pressed.disconnect()
+                btn.pressed.connect(lambda b=btn: self._on_button_press_menu(b))
+
+    def _trigger_navigate(self, path):
+        if self._on_navigate_callback:
+            self._on_navigate_callback(path)
+
+    def _on_button_press_menu(self, button):
+        self._show_subdirectory_menu(button)
+
+    def _on_button_press(self, button):
+        self._press_start_time = time.time()
+        self._press_x = QCursor.pos().x()
+        self._press_y = QCursor.pos().y()
+        self._active_button = button
+        self._long_press_timer = QTimer()
+        self._long_press_timer.setSingleShot(True)
+        self._long_press_timer.timeout.connect(lambda: self._on_long_press_timeout(button))
+        self._long_press_timer.start(self._LONG_PRESS_THRESHOLD_MS)
+
+    def _on_button_release(self, button):
+        if self._long_press_timer and self._long_press_timer.isActive():
+            self._long_press_timer.stop()
+        if self._active_button:
+            current_pos = QCursor.pos()
+            dist = math.sqrt((current_pos.x() - self._press_x)**2 + (current_pos.y() - self._press_y)**2)
+            if dist < self._DRAG_THRESHOLD_PIXELS:
+                if (time.time() - self._press_start_time) * 1000 < self._LONG_PRESS_THRESHOLD_MS:
+                    path = self._active_button.path
+                    if path and self._on_navigate_callback:
+                        self._on_navigate_callback(path)
+            self._active_button = None
+
+    def _on_long_press_timeout(self, button):
+        if self._active_button is button:
+            self._show_subdirectory_menu(button)
+            self._long_press_timer = None
+
+    def _show_subdirectory_menu(self, button):
+        path = button.path
+        selected_path = path
+
+        all_entries = os.listdir(path)
+        subdirs = []
+        hidden_subdirs = []
+        for entry in all_entries:
+            full_path = os.path.join(path, entry)
+            if os.path.isdir(full_path):
+                if entry.startswith('.'):
+                    hidden_subdirs.append(entry)
+                else:
+                    subdirs.append(entry)
+        subdirs.sort()
+        hidden_subdirs.sort()
+        sorted_subdirs = subdirs + hidden_subdirs
+
+        if sorted_subdirs:
+            button_pos = button.mapToGlobal(QPoint(0, button.height()))
+            menu_x = button_pos.x()
+            menu_y = button_pos.y()
+            selector_dialog = LongMenu(
+                button,
+                None,
+                sorted_subdirs,
+                font=self.font,
+                x_pos=menu_x,
+                y_pos=menu_y,
+                n_lines=15
+            )
+            selector_dialog.exec()
+            selected_name = selector_dialog.result
+            if selected_name:
+                selected_path = os.path.join(path, selected_name)
+
+        self._trigger_navigate(selected_path)
 
 
 class ImagePicker(QMainWindow):
-    """A window for displaying image thumbnails in a directory"""
-    
-    directory_changed = Signal(str)
-    
-    def __init__(self, parent=None, initial_dir=None, picker_id=0):
-        super().__init__(parent)
-        self.picker_id = picker_id
-        self.image_dir = initial_dir if initial_dir else PICTURES_DIR
-        self.image_path = None
-        self.selected_thumbnails = set()
-        self.viewer_windows = []
-        self.list_cmd = "ls"
-        self.thumbnail_dim = DEFAULT_THUMBNAIL_DIM
-        
-        # UI setup
-        self._create_ui()
-        
-        # Directory watcher
+    def __init__(self, master, picker_info=None):
+        super().__init__(master)
+        self.master = master
+        self.setWindowTitle("kubux-image-manager")
+        self.thumbnail_width = picker_info[0]
+        self.image_dir = picker_info[1]
+        self.list_cmd = picker_info[2]
+        self.window_geometry = picker_info[3]
+        self.background_worker = BackgroundWorker(self.image_dir, self.thumbnail_width)
+        self.update_thumbnail_job_id = None
         self.watcher = DirectoryWatcher(self)
-        self.watcher.start_watching(self.image_dir)
         
-        # Background preloading
-        self.background_worker = BackgroundWorker(self.image_dir, self.thumbnail_dim)
-        self.update_timer = QTimer(self)
-        self.update_timer.timeout.connect(self._check_queue)
-        self.update_timer.start(50)  # 50ms interval
-        
-        self.setWindowTitle(f"Image Picker {self.picker_id}")
-        self.resize(800, 600)
-        self.show()
-    
-    def _create_ui(self):
-        """Create the UI components"""
-        self.central_widget = QWidget(self)
-        self.setCentralWidget(self.central_widget)
-        
-        main_layout = QVBoxLayout(self.central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(5)
-        
-        # Create bread crumb navigator for directory navigation
-        self.breadcrumbs = BreadCrumbNavigator(self)
-        self.breadcrumbs.navigate_requested.connect(self.change_directory)
-        self.breadcrumbs.set_path(self.image_dir)
-        
-        # Create thumbnail grid for images
-        self.thumbnail_grid = DirectoryThumbnailGrid(
-            self,
-            self.image_dir,
-            self.list_cmd,
-            self.thumbnail_dim,
-            static_button_config_callback=self._static_button_config,
-            dynamic_button_config_callback=self._dynamic_button_config
-        )
-        
-        # Create directory path editable label
-        self.path_label = EditableLabelWithCopy(
-            self, 
-            initial_text=self.image_dir,
-            info="Dir: ",
-            font=get_linux_ui_font()
-        )
-        self.path_label.rename_requested.connect(self._on_path_edit)
-        
-        # Create thumbnail size slider
-        size_layout = QHBoxLayout()
-        size_label = QLabel("Size:")
-        self.size_slider = QSlider(Qt.Horizontal)
-        self.size_slider.setMinimum(50)
-        self.size_slider.setMaximum(400)
-        self.size_slider.setValue(self.thumbnail_dim)
-        self.size_slider.setTickPosition(QSlider.TicksBelow)
-        self.size_slider.setTickInterval(50)
-        self.size_slider.valueChanged.connect(self._on_size_change)
-        
-        size_layout.addWidget(size_label)
-        size_layout.addWidget(self.size_slider)
-        
-        # Add all components to main layout
-        main_layout.addWidget(self.breadcrumbs)
-        main_layout.addWidget(self.path_label)
-        main_layout.addLayout(size_layout)
-        main_layout.addWidget(self.thumbnail_grid, 1)  # Give stretch factor to grid
-        
-        # Create context menu
-        self.thumbnail_context_menu = QMenu(self)
-        self.open_action = QAction("Open", self)
-        self.open_action.triggered.connect(self._open_context_menu_image)
-        self.wallpaper_action = QAction("Set as Wallpaper", self)
-        self.wallpaper_action.triggered.connect(self._set_wallpaper)
-        self.thumbnail_context_menu.addAction(self.open_action)
-        self.thumbnail_context_menu.addAction(self.wallpaper_action)
-        
-        # Set up keyboard shortcuts
-        self._setup_shortcuts()
-    
-    def _setup_shortcuts(self):
-        """Set up keyboard shortcuts"""
-        # Escape to clear selection
-        escape_action = QAction(self)
-        escape_action.setShortcut(Qt.Key_Escape)
-        escape_action.triggered.connect(self.clear_selection)
-        self.addAction(escape_action)
-        
-        # Ctrl+A to select all
-        select_all_action = QAction(self)
-        select_all_action.setShortcut(QKeySequence.SelectAll)
-        select_all_action.triggered.connect(self.select_all)
-        self.addAction(select_all_action)
-    
-    def _static_button_config(self, button, img_path):
-        """Configure static properties of thumbnail buttons"""
-        button.setContextMenuPolicy(Qt.CustomContextMenu)
-        button.customContextMenuRequested.connect(lambda pos, b=button: self._show_context_menu(b, pos))
-        button.clicked.connect(lambda checked=False, b=button: self._on_thumbnail_click(b))
-        button.mouseDoubleClickEvent = lambda event, b=button: self._on_thumbnail_double_click(b, event)
-        button.mousePressEvent = lambda event, b=button: self._on_thumbnail_press(b, event)
-        button.mouseMoveEvent = lambda event, b=button: self._on_thumbnail_move(b, event)
-        button.mouseReleaseEvent = lambda event, b=button: self._on_thumbnail_release(b, event)
-        
-    def _dynamic_button_config(self, button, img_path):
-        """Configure dynamic properties of thumbnail buttons"""
-        is_selected = img_path in self.selected_thumbnails
-        button.setProperty("selected", is_selected)
-        
-    def _on_thumbnail_click(self, button):
-        """Handle thumbnail button click"""
-        img_path = button.property("img_path")
-        if not img_path:
-            return
-        
-        self.image_path = img_path
-        
-        # Update selection state
-        if img_path in self.selected_thumbnails:
-            self.selected_thumbnails.remove(img_path)
+        if self.window_geometry:
+            self.restoreGeometry(QByteArray.fromBase64(self.window_geometry.encode()))
         else:
-            self.selected_thumbnails.add(img_path)
+            self.resize(1000, 600)
         
-        # Refresh UI to show selection changes
-        self.thumbnail_grid.refresh()
-    
-    def _on_thumbnail_double_click(self, button, event):
-        """Handle thumbnail double click to open image"""
-        img_path = button.property("img_path")
-        if img_path:
-            self.open_image(img_path)
-    
-    def _on_thumbnail_press(self, button, event):
-        """Handle mouse press on thumbnail (for drag and drop)"""
-        if not hasattr(self, 'drag_helper'):
-            self.drag_helper = DragHelper(self)
-        
-        # Start tracking for potential drag operation
-        self.drag_helper.start_tracking(
-            button, 
-            event, 
-            lambda widget, x, y: self._make_drag_ghost(widget), 
-            lambda event: self._on_thumbnail_click(button),
-            Qt.LeftButton,
-            'handle_drop',
-            'handle_right_drop'
-        )
-        return True
-    
-    def _on_thumbnail_move(self, button, event):
-        """Handle mouse movement for drag and drop"""
-        if hasattr(self, 'drag_helper'):
-            return self.drag_helper.process_motion(event)
-        return False
-    
-    def _on_thumbnail_release(self, button, event):
-        """Handle mouse button release for drag and drop"""
-        if hasattr(self, 'drag_helper'):
-            return self.drag_helper.process_release(event)
-        return False
-    
-    def _make_drag_ghost(self, button):
-        """Create ghost image for drag and drop"""
-        img_path = button.property("img_path")
-        pixmap = button.property("pixmap")
-        
-        if pixmap and not pixmap.isNull():
-            # Create a semi-transparent version of the pixmap
-            ghost_pixmap = QPixmap(pixmap.size())
-            ghost_pixmap.fill(Qt.transparent)
-            
-            painter = QPainter(ghost_pixmap)
-            painter.setOpacity(0.7)
-            painter.drawPixmap(0, 0, pixmap)
-            painter.end()
-            
-            return ghost_pixmap
-        
-        # Fallback: Create a simple colored rectangle
-        ghost_pixmap = QPixmap(100, 100)
-        ghost_pixmap.fill(QColor(0, 0, 255, 128))
-        return ghost_pixmap
-    
-    def _show_context_menu(self, button, pos):
-        """Show context menu for thumbnail"""
-        img_path = button.property("img_path")
-        if not img_path:
-            return
-        
-        # Set current image path
-        self.image_path = img_path
-        
-        # Show menu at cursor position
-        global_pos = button.mapToGlobal(pos)
-        self.thumbnail_context_menu.exec_(global_pos)
-    
-    def _open_context_menu_image(self):
-        """Open the image from context menu"""
-        if self.image_path:
-            self.open_image(self.image_path)
-    
-    def _set_wallpaper(self):
-        """Set the selected image as wallpaper"""
-        if not self.image_path:
-            return
-        
-        if not set_wallpaper(self.image_path, lambda title, msg: custom_message_dialog(self, title, msg)):
-            custom_message_dialog(self, "Error", "Failed to set wallpaper")
-    
-    def open_image(self, img_path=None):
-        """Open an image in the viewer window"""
-        if not img_path and self.image_path:
-            img_path = self.image_path
-        elif not img_path:
-            return
-        
-        # Check if image already open in a viewer
-        for viewer in self.viewer_windows:
-            if viewer.image_path == img_path:
-                # Already open, just activate it
-                viewer.activateWindow()
-                viewer.raise_()
-                return
-        
-        # Create a new viewer
-        viewer_info = (img_path, None, False)  # (path, geometry, fullscreen)
-        viewer = ImageViewer(self, viewer_info)
-        self.viewer_windows.append(viewer)
-    
-    def _on_path_edit(self, old_path, new_path):
-        """Handle directory path edit"""
-        if not new_path:
-            return
-        
-        # Try to change to the new directory
-        if os.path.isdir(new_path):
-            self.change_directory(new_path)
-        elif os.path.isdir(os.path.dirname(new_path)):
-            # If user entered a subdirectory that doesn't exist yet, create it
-            try:
-                os.makedirs(new_path, exist_ok=True)
-                self.change_directory(new_path)
-            except Exception as e:
-                log_error(f"Error creating directory '{new_path}': {e}")
-                # Reset to old path
-                self.path_label.set_text(old_path)
-        else:
-            # Reset to old path
-            self.path_label.set_text(old_path)
-    
-    def _on_size_change(self, value):
-        """Handle thumbnail size slider change"""
-        self.thumbnail_dim = value
-        
-        # Update background worker
-        self.background_worker.run(self.image_dir, self.thumbnail_dim)
-        
-        # Update thumbnail grid
-        self.thumbnail_grid.set_size_path_and_command(self.thumbnail_dim, self.image_dir, self.list_cmd)
-    
-    def change_directory(self, new_dir):
-        """Change the current directory"""
-        if not os.path.isdir(new_dir):
-            return
-        
-        # Update directory
-        self.image_dir = os.path.normpath(new_dir)
-        
-        # Update UI
-        self.path_label.set_text(self.image_dir)
-        self.breadcrumbs.set_path(self.image_dir)
-        
-        # Clear selection
-        self.selected_thumbnails.clear()
-        
-        # Update watcher
-        self.watcher.change_dir(self.image_dir)
-        
-        # Update background worker
-        self.background_worker.run(self.image_dir, self.thumbnail_dim)
-        
-        # Update thumbnail grid
-        self.thumbnail_grid.set_size_path_and_command(self.thumbnail_dim, self.image_dir, self.list_cmd)
-        
-        # Emit signal
-        self.directory_changed.emit(self.image_dir)
-    
-    def select_all(self):
-        """Select all images in the current directory"""
-        # Get all image files in the directory
-        all_images = self.thumbnail_grid._files
-        
-        # Add all to selection
-        self.selected_thumbnails.update(all_images)
-        
-        # Refresh UI
-        self.thumbnail_grid.refresh()
-    
-    def clear_selection(self):
-        """Clear the current selection"""
-        self.selected_thumbnails.clear()
-        
-        # Refresh UI
-        self.thumbnail_grid.refresh()
-    
-    def move_selected_files_to_directory(self, source_path, target_dir_path):
-        """Move all selected files to the target directory"""
-        if not self.selected_thumbnails:
-            # If no selection, move the source file if provided
-            if source_path:
-                self._move_file_to_dir(source_path, target_dir_path)
-        else:
-            # Move all selected files
-            for img_path in list(self.selected_thumbnails):
-                self._move_file_to_dir(img_path, target_dir_path)
-            
-            # Clear selection after move
-            self.selected_thumbnails.clear()
-        
-        # Refresh the view
-        self.thumbnail_grid.regrid()
-    
-    def move_file_to_directory(self, source_path, target_dir_path):
-        """Move a single file to the target directory"""
-        if not source_path or source_path.lower() == 'none':
-            return
-        
-        self._move_file_to_dir(source_path, target_dir_path)
-        
-        # Remove from selection if it was selected
-        if source_path in self.selected_thumbnails:
-            self.selected_thumbnails.remove(source_path)
-        
-        # Refresh the view
-        self.thumbnail_grid.regrid()
-    
-    def _move_file_to_dir(self, source_path, target_dir_path):
-        """Helper to move a file and update UI accordingly"""
-        # Check source and target
-        if not os.path.exists(source_path):
-            return
-            
-        if not os.path.isdir(target_dir_path):
-            try:
-                os.makedirs(target_dir_path, exist_ok=True)
-            except Exception as e:
-                log_error(f"Error creating directory '{target_dir_path}': {e}")
-                return
-        
-        # Move the file
-        new_path = move_file_to_directory(source_path, target_dir_path)
-        
-        if new_path:
-            log_action(f"Moved '{os.path.basename(source_path)}' to '{target_dir_path}'")
-            
-            # If target dir is the same as our current dir, we need to update selection
-            if os.path.realpath(target_dir_path) == os.path.realpath(self.image_dir):
-                # Update selection with new path
-                if source_path in self.selected_thumbnails:
-                    self.selected_thumbnails.remove(source_path)
-                    self.selected_thumbnails.add(new_path)
-    
-    def remove_image_viewer(self, viewer):
-        """Remove a viewer window from our tracking list"""
-        if viewer in self.viewer_windows:
-            self.viewer_windows.remove(viewer)
-    
-    def _check_queue(self):
-        """Check the background worker queue for new images to preload"""
+        self._create_widgets()
+        self._cache_timer = QTimer(self)
+        self._cache_timer.timeout.connect(self._cache_widget)
+        self._cache_timer.start(50)
+
+    def _cache_widget(self):
         try:
-            while not self.background_worker.path_name_queue.empty():
-                path = self.background_worker.path_name_queue.get_nowait()
-                # Silently preload the image
-                get_or_make_qpixmap(path, self.thumbnail_dim)
-        except Exception as e:
-            log_error(f"Error in background worker: {e}")
-    
-    def broadcast_contents_change(self):
-        """Handle directory contents change event"""
-        self.thumbnail_grid.regrid()
-    
+            path_name = self.background_worker.path_name_queue.get_nowait()
+            self._gallery_grid._get_button(path_name, self.thumbnail_width)
+        except queue.Empty:
+            pass
+
+    def get_picker_info(self):
+        geom = self.saveGeometry().toBase64().data().decode()
+        return self.thumbnail_width, self.image_dir, self.list_cmd, geom
+
+    def _on_clone(self):
+        self.master.open_picker_dialog(self.get_picker_info())
+
+    def _update_list_cmd(self):
+        self.list_cmd = self.list_cmd_entry.text()
+        prepend_or_move_to_front(self.list_cmd, self.master.list_commands)
+        QTimer.singleShot(0, self._regrid)
+
+    def _show_list_cmd_menu(self, pos):
+        current_cmd = self.list_cmd_entry.text().strip()
+        prepend_or_move_to_front(current_cmd, self.master.list_commands)
+        widget_pos = self.list_cmd_entry.mapToGlobal(QPoint(0, 0))
+        menu_x = widget_pos.x()
+        menu_y = widget_pos.y()
+        selector_dialog = LongMenu(
+            self,
+            None,
+            self.master.list_commands,
+            font=get_font(self),
+            x_pos=menu_x,
+            y_pos=menu_y,
+            pos="top"
+        )
+        selector_dialog.exec()
+        selected_cmd = selector_dialog.result
+        if selected_cmd:
+            self.list_cmd_entry.setText(selected_cmd)
+            self._update_list_cmd()
+
+    def _regrid(self):
+        self._gallery_grid.set_size_path_and_command(self.thumbnail_width, self.image_dir, self.list_cmd)
+
+    def _redraw(self):
+        self._gallery_grid.redraw()
+
+    def _refresh(self):
+        self._gallery_grid.refresh()
+
+    def _create_widgets(self):
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(5)
+
+        # Top bar
+        self._top_frame = QWidget()
+        top_layout = QHBoxLayout(self._top_frame)
+        top_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.breadcrumb_nav = BreadCrumNavigator(
+            self._top_frame,
+            on_navigate_callback=self._browse_directory
+        )
+        top_layout.addWidget(self.breadcrumb_nav, 1)
+        
+        clone_btn = QPushButton("Clone")
+        clone_btn.setFont(get_font(self))
+        clone_btn.clicked.connect(self._on_clone)
+        top_layout.addWidget(clone_btn)
+        
+        close_btn = QPushButton("Close")
+        close_btn.setFont(get_font(self))
+        close_btn.clicked.connect(self._on_close)
+        top_layout.addWidget(close_btn)
+        
+        main_layout.addWidget(self._top_frame)
+
+        # Gallery area
+        self._canvas_frame = QWidget()
+        canvas_layout = QHBoxLayout(self._canvas_frame)
+        canvas_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self._gallery_scroll = QScrollArea()
+        self._gallery_scroll.setWidgetResizable(True)
+        self._gallery_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._gallery_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        self._gallery_grid = DirectoryThumbnailGrid(
+            self._gallery_scroll,
+            directory_path=self.image_dir,
+            list_cmd=self.list_cmd,
+            item_width=self.thumbnail_width,
+            item_border_width=6,
+            static_button_config_callback=self._static_configure_picker_button,
+            dynamic_button_config_callback=self._dynamic_configure_picker_button
+        )
+        self._gallery_scroll.setWidget(self._gallery_grid)
+        canvas_layout.addWidget(self._gallery_scroll)
+        
+        main_layout.addWidget(self._canvas_frame, 1)
+
+        # Bottom bar
+        self._bot_frame = QWidget()
+        bot_layout = QHBoxLayout(self._bot_frame)
+        bot_layout.setContentsMargins(0, 0, 0, 0)
+        
+        size_label = QLabel("Size:")
+        size_label.setFont(get_font(self))
+        bot_layout.addWidget(size_label)
+        
+        self.thumbnail_slider = QSlider(Qt.Horizontal)
+        self.thumbnail_slider.setMinimum(96)
+        self.thumbnail_slider.setMaximum(1920)
+        self.thumbnail_slider.setSingleStep(20)
+        self.thumbnail_slider.setValue(self.thumbnail_width)
+        self.thumbnail_slider.valueChanged.connect(self._update_thumbnail_width)
+        self.thumbnail_slider.setFixedWidth(150)
+        bot_layout.addWidget(self.thumbnail_slider)
+        
+        show_label = QLabel("Show:")
+        show_label.setFont(get_font(self))
+        bot_layout.addWidget(show_label)
+        
+        self.list_cmd_entry = QLineEdit(self.list_cmd)
+        self.list_cmd_entry.setFont(get_font(self))
+        self.list_cmd_entry.returnPressed.connect(self._update_list_cmd)
+        self.list_cmd_entry.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.list_cmd_entry.customContextMenuRequested.connect(self._show_list_cmd_menu)
+        bot_layout.addWidget(self.list_cmd_entry, 1)
+        
+        desel_btn = QPushButton("Des.")
+        desel_btn.setFont(get_font(self))
+        desel_btn.clicked.connect(self._on_deselect)
+        bot_layout.addWidget(desel_btn)
+        
+        sel_btn = QPushButton("Sel.")
+        sel_btn.setFont(get_font(self))
+        sel_btn.clicked.connect(self._on_select)
+        bot_layout.addWidget(sel_btn)
+        
+        self.apply_btn = QPushButton("Apply")
+        self.apply_btn.setFont(get_font(self))
+        self.apply_btn.clicked.connect(self._on_apply)
+        bot_layout.addWidget(self.apply_btn)
+        
+        main_layout.addWidget(self._bot_frame)
+
+        self.watcher.start_watching(self.image_dir)
+        self._gallery_scroll.verticalScrollBar().setValue(0)
+        self.background_worker.run(self.image_dir, self.thumbnail_width)
+        self.breadcrumb_nav.set_path(self.image_dir)
+        self._gallery_grid.regrid()
+        
+        QTimer.singleShot(100, self.activateWindow)
+        self.show()
+
+    def _make_ghost(self, button, x, y):
+        dir_path = os.path.dirname(button.img_path)
+        files = self.master.selected_files_in_directory(dir_path)
+        base = os.path.basename(dir_path)
+        
+        ghost = QDialog(self.master, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        ghost.setAttribute(Qt.WA_TranslucentBackground)
+        ghost.setWindowOpacity(0.7)
+        
+        layout = QVBoxLayout(ghost)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        if files:
+            label = QLabel(f"move {len(files)} files from directory {base} selected")
+            label.setStyleSheet("background-color: lightgreen; padding: 10px;")
+        else:
+            label = QLabel(f"NO FILES SELECTED in {base}")
+            label.setStyleSheet("background-color: red; padding: 10px;")
+        label.setWordWrap(True)
+        label.setMaximumWidth(300)
+        label.setFont(get_font(self))
+        layout.addWidget(label)
+        
+        ghost.adjustSize()
+        ghost.move(x - 10, y - 10)
+        return ghost
+
+    def _exec_cmd_for_image(self, button):
+        args = [button.img_path]
+        self.master.execute_current_command_with_args(args)
+
+    def _static_configure_picker_button(self, btn, img_path):
+        pass
+
+    def _dynamic_configure_picker_button(self, btn, img_path):
+        cache_key = uniq_file_id(img_path, self.thumbnail_width)
+        btn.img_path = img_path
+        if btn.cache_key != cache_key:
+            btn.cache_key = cache_key
+            qt_image = get_or_make_qt_by_key(cache_key, img_path, self.thumbnail_width)
+            btn.qt_image = qt_image
+            btn.setIcon(QIcon(qt_image))
+            btn.setIconSize(qt_image.size())
+        
+        btn.clicked.connect(lambda checked=False, b=btn: self._toggle_selection_btn(b))
+        btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        btn.customContextMenuRequested.connect(lambda pos, b=btn: self._open_context_menu(b, pos))
+        
+        if img_path in self.master.selected_files:
+            btn.setStyleSheet("border: 3px solid blue;")
+        else:
+            btn.setStyleSheet("")
+
+    def _toggle_selection_btn(self, btn):
+        self.master.toggle_selection(btn.img_path)
+
+    def _on_close(self):
+        self.background_worker.stop()
+        self.watcher.stop_watching()
+        self._cache_timer.stop()
+        self.master.open_picker_dialogs.remove(self)
+        self.close()
+
+    def _on_select(self):
+        all_files = list_image_files_by_command(self.image_dir, self.list_cmd)
+        for file in all_files:
+            self.master.select_file(file)
+
+    def _on_deselect(self):
+        all_files = list_image_files_by_command(self.image_dir, self.list_cmd)
+        for file in all_files:
+            self.master.unselect_file(file)
+
+    def _on_apply(self):
+        files = self.master.selected_files_in_directory(self.image_dir)
+        options = self.master.command_field.current_cmd_list()
+        btn_pos = self.apply_btn.mapToGlobal(QPoint(0, 0))
+        context_menu = LongMenu(
+            self,
+            default_option=None,
+            other_options=options,
+            font=self.master.main_font,
+            x_pos=btn_pos.x() - 30,
+            y_pos=btn_pos.y() - 30,
+            pos="center"
+        )
+        context_menu.exec()
+        command = context_menu.result
+        if command:
+            self.master.execute_command_with_args(command, files)
+
+    def _open_context_menu(self, btn, pos):
+        options = self.master.command_field.current_cmd_list()
+        global_pos = btn.mapToGlobal(pos)
+        context_menu = LongMenu(
+            self,
+            default_option=None,
+            other_options=options,
+            font=self.master.main_font,
+            x_pos=global_pos.x() - 30,
+            y_pos=global_pos.y() - 30,
+            pos="bottom"
+        )
+        context_menu.exec()
+        command = context_menu.result
+        if command:
+            args = [btn.img_path]
+            self.master.execute_command_with_args(command, args)
+
+    def _browse_directory(self, path):
+        if not os.path.isdir(path):
+            custom_message_dialog(parent=self, title="Error", message=f"Invalid directory: {path}",
+                                  font=get_font(self))
+            return
+        self.image_dir = path
+        self.watcher.change_dir(path)
+        self.background_worker.run(path, self.thumbnail_width)
+        self.breadcrumb_nav.set_path(path)
+        self._regrid()
+        self._gallery_scroll.verticalScrollBar().setValue(0)
+
+    def _update_thumbnail_width(self, value):
+        if self.update_thumbnail_job_id:
+            self.update_thumbnail_job_id.stop()
+        self.update_thumbnail_job_id = QTimer()
+        self.update_thumbnail_job_id.setSingleShot(True)
+        self.update_thumbnail_job_id.timeout.connect(lambda: self._do_update_thumbnail_width(value))
+        self.update_thumbnail_job_id.start(400)
+
+    def _do_update_thumbnail_width(self, value):
+        self.thumbnail_width = value
+        self._regrid()
+
     def closeEvent(self, event):
-        """Handle window close event"""
-        # Stop background worker and watcher
-        if hasattr(self, 'background_worker'):
+        if self in self.master.open_picker_dialogs:
             self.background_worker.stop()
-        
-        if hasattr(self, 'watcher'):
             self.watcher.stop_watching()
-        
-        # Close all viewer windows
-        for viewer in self.viewer_windows:
-            viewer.close()
-        
-        # Accept the close event
+            self._cache_timer.stop()
+            self.master.open_picker_dialogs.remove(self)
         event.accept()
 
 
-class ImageBrowser(QMainWindow):
-    """Main application window that manages multiple image pickers"""
-    
+class FlexibleTextField(QWidget):
+    def __init__(self, parent, command_callback, commands="", font=None):
+        super().__init__(parent)
+        self.command_callback = command_callback
+        self.previous_index = None
+        if font is None:
+            self.font = get_font(self)
+        else:
+            self.font = font
+        self._create_widgets()
+        self._set_commands(commands)
+
+    def _create_widgets(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.text_area = QTextEdit()
+        self.text_area.setFont(self.font)
+        self.text_area.setLineWrapMode(QTextEdit.NoWrap)
+        self.text_area.cursorPositionChanged.connect(self._on_cursor_move)
+        self.text_area.mouseDoubleClickEvent = self._on_double_click_select
+        
+        layout.addWidget(self.text_area)
+        self.text_area.setFocus()
+
+    def _set_index(self, index):
+        cursor = self.text_area.textCursor()
+        cursor.movePosition(QTextCursor.Start)
+        for _ in range(index - 1):
+            cursor.movePosition(QTextCursor.Down)
+        self.text_area.setTextCursor(cursor)
+        self._on_cursor_move()
+
+    def _set_commands(self, commands):
+        self.commands = commands
+        self.text_area.setPlainText(commands)
+        self._set_index(1)
+
+    def _current_index(self):
+        cursor = self.text_area.textCursor()
+        return cursor.blockNumber() + 1
+
+    def _current_length(self):
+        return self.text_area.document().blockCount()
+
+    def _on_cursor_move(self):
+        current_index = self._current_index()
+        if current_index != self.previous_index:
+            self._highlight_current_line()
+            self.previous_index = current_index
+
+    def _highlight_current_line(self):
+        extra_selections = []
+        selection = QTextEdit.ExtraSelection()
+        line_color = QColor("#e0e0e0")
+        selection.format.setBackground(line_color)
+        selection.format.setProperty(QTextCharFormat.FullWidthSelection, True)
+        selection.cursor = self.text_area.textCursor()
+        selection.cursor.clearSelection()
+        extra_selections.append(selection)
+        self.text_area.setExtraSelections(extra_selections)
+
+    def _on_double_click_select(self, event):
+        cursor = self.text_area.cursorForPosition(event.pos())
+        index = cursor.blockNumber() + 1
+        command = self.get_command(index)
+        if command:
+            self.command_callback(command)
+        self._on_cursor_move()
+        QTextEdit.mouseDoubleClickEvent(self.text_area, event)
+
+    def get_command(self, index):
+        doc = self.text_area.document()
+        block = doc.findBlockByNumber(index - 1)
+        return block.text().strip() if block.isValid() else ""
+
+    def current_command(self):
+        index = self._current_index()
+        return self.get_command(index)
+
+    def current_text(self):
+        return self.text_area.toPlainText()
+
+    def current_cmd_list(self):
+        return [self.get_command(index) for index in range(1, self._current_length() + 1)]
+
+    def call_current_command(self):
+        command = self.current_command()
+        if command:
+            self.command_callback(command)
+
+
+# --- string ops ---
+
+def strip_prefix(prefix, string):
+    if string.startswith(prefix):
+        return string[len(prefix):].strip()
+    return None
+
+def expand_env_vars(input_string):
+    env_var_pattern = r'\${([A-Za-z_][A-Za-z0-9_]*)}'
+    def replacer(match):
+        var_name = match.group(1)
+        value = os.getenv(var_name, "")
+        return value
+    return re.sub(env_var_pattern, replacer, input_string)
+
+def expand_wildcards(command_line, selected_files):
+    try:
+        raw_tokens = shlex.split(command_line)
+    except ValueError as e:
+        log_error(f"Error parsing command line '{command_line}': {e}")
+        return [command_line]
+
+    if not raw_tokens:
+        return []
+
+    has_single_wildcard = '*' in raw_tokens
+    has_list_wildcard = '{*}' in raw_tokens
+
+    if (has_single_wildcard or has_list_wildcard) and not selected_files:
+        return []
+
+    keep_fingers_crossed = "dasdklasdashdaisdhiunerwehuacnkajdasudhuiewrnksvjiurkanr"
+    quoted_args = shlex.join(selected_files)
+    outputs = []
+    for file in selected_files:
+        quoted_file = shlex.quote(file)
+        cmd = command_line.replace("{*}", keep_fingers_crossed).replace("*", quoted_args).replace(keep_fingers_crossed, quoted_file)
+        outputs.append(cmd)
+    if outputs:
+        return outputs
+
+    return [command_line.replace("*", quoted_args)]
+
+
+# --- main ---
+
+class ImageManager(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.setWindowTitle("kubux image manager")
+        self._load_app_settings()
+        font_name, font_size = get_linux_system_ui_font_info()
+        self.regrid_job = None
+        self.redraw_job = None
+        self.refresh_job = None
+        self._ui_scale_job = None
+        self.base_font_size = font_size
+        self.main_font = QFont(font_name, int(self.base_font_size * self.ui_scale))
         
-        # App settings
-        self.app_settings = self._load_app_settings()
-        self.current_picker_id = 0
-        self.pickers = {}
+        if self.main_win_geometry:
+            self.restoreGeometry(QByteArray.fromBase64(self.main_win_geometry.encode()))
+        else:
+            self.resize(300, 400)
         
-        # Set up UI
-        self._create_ui()
-        
-        # Create initial picker
-        self._create_picker()
-        
-        self.setWindowTitle("Image Browser")
-        self.resize(1200, 800)
+        self._create_widgets()
+        self.open_picker_dialogs = []
+        self.open_picker_dialogs_from_info()
+        self.open_images = []
+        self.open_images_from_info()
+        self.command_field._set_index(self.current_index)
         self.show()
-    
-    def _create_ui(self):
-        """Set up the user interface"""
-        # Create central widget
-        self.central_widget = QWidget(self)
-        self.setCentralWidget(self.central_widget)
-        
-        # Create main layout
-        self.main_layout = QVBoxLayout(self.central_widget)
-        
-        # Create toolbar
-        toolbar = self.addToolBar("Main Toolbar")
-        toolbar.setMovable(False)
-        
-        # Add toolbar actions
-        new_picker_action = QAction("New Picker", self)
-        new_picker_action.triggered.connect(self._create_picker)
-        toolbar.addAction(new_picker_action)
-        
-        open_dir_action = QAction("Open Directory", self)
-        open_dir_action.triggered.connect(self._open_directory)
-        toolbar.addAction(open_dir_action)
-        
-        # Create status bar
-        self.statusBar()
-    
-    def _create_picker(self, initial_dir=None):
-        """Create a new image picker window"""
-        picker_id = self.current_picker_id
-        self.current_picker_id += 1
-        
-        # Create the picker
-        picker = ImagePicker(None, initial_dir, picker_id)  # Create as independent window
-        picker.directory_changed.connect(lambda path: self._update_recent_dirs(path))
-        
-        # Track the picker
-        self.pickers[picker_id] = picker
-        
-        return picker
-    
-    def _open_directory(self):
-        """Open a directory browser dialog"""
-        dir_dialog = QFileDialog(self)
-        dir_dialog.setFileMode(QFileDialog.Directory)
-        dir_dialog.setOption(QFileDialog.ShowDirsOnly, True)
-        
-        # Start in recent directory if available
-        if self.app_settings.get('recent_dirs'):
-            dir_dialog.setDirectory(self.app_settings['recent_dirs'][0])
-        
-        if dir_dialog.exec_():
-            selected_dirs = dir_dialog.selectedFiles()
-            if selected_dirs:
-                # Create a new picker for the selected directory
-                self._create_picker(selected_dirs[0])
-    
-    def _update_recent_dirs(self, directory):
-        """Update the list of recently used directories"""
-        # Make sure we have a list for recent directories
-        if 'recent_dirs' not in self.app_settings:
-            self.app_settings['recent_dirs'] = []
-        
-        # Update the list - move to front or add
-        prepend_or_move_to_front(directory, self.app_settings['recent_dirs'])
-        
-        # Limit the list size
-        if len(self.app_settings['recent_dirs']) > 10:
-            self.app_settings['recent_dirs'] = self.app_settings['recent_dirs'][:10]
-        
-        # Save the settings
-        self._save_app_settings()
-    
+
+    def collect_open_picker_info(self):
+        self.open_picker_info = []
+        for picker in self.open_picker_dialogs:
+            self.open_picker_info.append(picker.get_picker_info())
+        return self.open_picker_info
+
+    def open_picker_dialogs_from_info(self):
+        for picker_info in self.open_picker_info:
+            self.open_picker_dialog(picker_info)
+
+    def open_picker_dialog(self, picker_info):
+        dummy = ImagePicker(self, picker_info)
+        self.open_picker_dialogs.append(dummy)
+
+    def collect_open_image_info(self):
+        self.open_image_info = []
+        for image in self.open_images:
+            self.open_image_info.append(image.get_image_info())
+        return self.open_image_info
+
+    def open_images_from_info(self):
+        for image_info in self.open_image_info:
+            self.open_image(image_info)
+
+    def open_image(self, image_info):
+        dummy = ImageViewer(self, image_info)
+        self.open_images.append(dummy)
+
     def _load_app_settings(self):
-        """Load application settings from file"""
-        if os.path.exists(APP_SETTINGS_FILE):
-            try:
-                with open(APP_SETTINGS_FILE, 'r') as f:
-                    return json.load(f)
-            except Exception as e:
-                log_error(f"Error loading app settings: {e}")
-        
-        # Default settings
-        return {
-            'recent_dirs': [PICTURES_DIR],
-            'thumbnail_size': DEFAULT_THUMBNAIL_DIM
-        }
-    
-    def _save_app_settings(self):
-        """Save application settings to file"""
         try:
+            if os.path.exists(APP_SETTINGS_FILE):
+                with open(APP_SETTINGS_FILE, 'r') as f:
+                    self.app_settings = json.load(f)
+            else:
+                self.app_settings = {}
+        except (json.JSONDecodeError, Exception) as e:
+            log_error(f"Error loading app settings, initializing defaults: {e}")
+            self.app_settings = {}
+
+        self.ui_scale = self.app_settings.get("ui_scale", 1.0)
+        self.main_win_geometry = self.app_settings.get("main_win_geometry", None)
+        self.commands = self.app_settings.get("commands", "Open: {*}\nSetWP: *\nOpen: ${HOME}/Pictures")
+        self.current_index = int(self.app_settings.get("current_index", 1))
+        self.selected_files = self.app_settings.get("selected_files", [])
+        self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None])
+        self.open_picker_info = self.app_settings.get("open_picker_info", [])
+        self.open_image_info = self.app_settings.get("open_image_info", [])
+        self.list_commands = self.app_settings.get("list_commands", ["ls", "find . -maxdepth 1 -type f"])
+
+    def _save_app_settings(self):
+        try:
+            if not hasattr(self, 'app_settings'):
+                self.app_settings = {}
+            self.app_settings["ui_scale"] = self.ui_scale
+            self.app_settings["main_win_geometry"] = self.saveGeometry().toBase64().data().decode()
+            self.app_settings["commands"] = self.command_field.current_text().rstrip('\n')
+            self.app_settings["current_index"] = self.command_field._current_index()
+            self.app_settings["selected_files"] = self.selected_files
+            self.app_settings["new_picker_info"] = self.new_picker_info
+            self.app_settings["open_picker_info"] = self.collect_open_picker_info()
+            self.app_settings["open_image_info"] = self.collect_open_image_info()
+            self.app_settings["list_commands"] = self.list_commands
+
             with open(APP_SETTINGS_FILE, 'w') as f:
-                json.dump(self.app_settings, f, indent=2)
+                json.dump(self.app_settings, f, indent=4)
         except Exception as e:
             log_error(f"Error saving app settings: {e}")
-    
-    def closeEvent(self, event):
-        """Handle main window close event"""
-        # Close all picker windows
-        for picker in list(self.pickers.values()):
-            picker.close()
+
+    def _create_widgets(self):
+        central_widget = QWidget(self)
+        self.setCentralWidget(central_widget)
         
-        # Save settings
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        main_layout.setSpacing(5)
+        
+        self.command_field = FlexibleTextField(
+            central_widget,
+            commands=self.commands,
+            command_callback=self.execute_command,
+            font=self.main_font
+        )
+        main_layout.addWidget(self.command_field, 1)
+        
+        control_frame = QWidget()
+        control_layout = QHBoxLayout(control_frame)
+        control_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.exec_button = QPushButton("Process selected")
+        self.exec_button.setFont(self.main_font)
+        self.exec_button.clicked.connect(self.execute_current_command)
+        control_layout.addWidget(self.exec_button)
+        
+        self.deselect_button = QPushButton("Clear selection")
+        self.deselect_button.setFont(self.main_font)
+        self.deselect_button.clicked.connect(self.clear_selection)
+        control_layout.addWidget(self.deselect_button)
+        
+        control_layout.addStretch()
+        
+        ui_label = QLabel("UI:")
+        ui_label.setFont(self.main_font)
+        control_layout.addWidget(ui_label)
+        
+        self.ui_slider = QSlider(Qt.Horizontal)
+        self.ui_slider.setMinimum(2)
+        self.ui_slider.setMaximum(35)
+        self.ui_slider.setValue(int(self.ui_scale * 10))
+        self.ui_slider.valueChanged.connect(self._update_ui_scale)
+        self.ui_slider.setFixedWidth(100)
+        control_layout.addWidget(self.ui_slider)
+        
+        self.quit_button = QPushButton("Quit")
+        self.quit_button.setFont(self.main_font)
+        self.quit_button.clicked.connect(self.close_app)
+        control_layout.addWidget(self.quit_button)
+        
+        main_layout.addWidget(control_frame)
+        self.update_button_status()
+
+    def move_file_to_directory(self, file_path, target_dir):
+        new_path = move_file_to_directory(file_path, target_dir)
+        if file_path in self.selected_files:
+            self.unselect_file(file_path)
+            self.select_file(new_path)
+        self.broadcast_contents_change()
+
+    def selected_files_in_directory(self, directory):
+        return [file for file in self.selected_files if is_file_in_dir(file, directory)]
+
+    def move_selected_files_to_directory(self, file_path, target_dir):
+        source_dir = os.path.realpath(os.path.dirname(file_path))
+        old_selected = self.selected_files
+        self.selected_files = []
+        for file in old_selected:
+            if is_file_in_dir(file, source_dir):
+                new_path = move_file_to_directory(file, target_dir)
+                self.selected_files.append(new_path)
+            else:
+                self.selected_files.append(file)
+        self.broadcast_contents_change()
+
+    def sanitize_selected_files(self):
+        self.selected_files[:] = [path for path in self.selected_files if os.path.exists(path)]
+
+    def execute_command_with_args(self, command, args):
+        command = expand_env_vars(command)
+        to_do = expand_wildcards(command, args)
+        status_change = False
+        for cmd in to_do:
+            if (files := strip_prefix("Open:", cmd)) is not None:
+                log_action(f"execute as an internal command: Open: {files}")
+                path_list = shlex.split(files)
+                for path in path_list:
+                    self.open_path(path)
+            elif (files := strip_prefix("Fullscreen:", cmd)) is not None:
+                log_action(f"execute as an internal command: Fullscreen: {files}")
+                path_list = shlex.split(files)
+                for path in path_list:
+                    self.fullscreen_path(path)
+            elif (files := strip_prefix("SetWP:", cmd)) is not None:
+                log_action(f"execute as an internal command: SetWP: {files}")
+                path_list = shlex.split(files)
+                if path_list:
+                    self.set_wp(path_list[-1])
+            elif (list_cmd := strip_prefix("Select:", cmd)) is not None:
+                log_action(f"execute as an internal command: Select: {list_cmd}")
+                status_change = True
+                file_list = filter_for_files(list_cmd)
+                for file in file_list:
+                    self.select_file(file)
+            elif (list_cmd := strip_prefix("Deselect:", cmd)) is not None:
+                log_action(f"execute as an internal command: Deselect: {list_cmd}")
+                status_change = True
+                file_list = filter_for_files(list_cmd)
+                for file in file_list:
+                    self.unselect_file(file)
+            else:
+                log_action(f"execute as a shell command: {cmd}")
+                execute_shell_command(cmd)
+        if status_change:
+            self.broadcast_selection_change()
+
+    def execute_command(self, command):
+        self.execute_command_with_args(command, self.selected_files)
+
+    def execute_current_command(self):
+        self.sanitize_selected_files()
+        self.execute_command(self.command_field.current_command())
+
+    def execute_current_command_with_args(self, args):
+        self.execute_command_with_args(self.command_field.current_command(), args)
+
+    def broadcast_selection_change(self):
+        self.sanitize_selected_files()
+        if self.refresh_job:
+            self.refresh_job.stop()
+        self.refresh_job = QTimer()
+        self.refresh_job.setSingleShot(True)
+        self.refresh_job.timeout.connect(self.refresh_open_pickers)
+        self.refresh_job.start(50)
+
+    def broadcast_contents_change(self):
+        self.sanitize_selected_files()
+        if self.regrid_job:
+            self.regrid_job.stop()
+        self.regrid_job = QTimer()
+        self.regrid_job.setSingleShot(True)
+        self.regrid_job.timeout.connect(self.regrid_open_pickers)
+        self.regrid_job.start(50)
+
+    def refresh_open_pickers(self):
+        self.refresh_job = None
+        for picker in self.open_picker_dialogs:
+            picker._refresh()
+        self.update_button_status()
+
+    def redraw_open_pickers(self):
+        self.redraw_job = None
+        for picker in self.open_picker_dialogs:
+            picker._redraw()
+        self.update_button_status()
+
+    def regrid_open_pickers(self):
+        log_debug(f"regridding all open pickers.")
+        self.regrid_job = None
+        for picker in self.open_picker_dialogs:
+            log_debug(f"rigridding picker {picker}")
+            picker._regrid()
+        self.update_button_status()
+
+    def select_file(self, path):
+        self.selected_files.append(path)
+        self.broadcast_selection_change()
+
+    def unselect_file(self, path):
+        try:
+            self.selected_files.remove(path)
+        except Exception:
+            pass
+        self.broadcast_selection_change()
+
+    def _do_update_ui_scale(self, scale_factor):
+        self.ui_scale = scale_factor
+        new_size = int(self.base_font_size * scale_factor)
+        self.main_font.setPointSize(new_size)
+        self._update_widget_fonts(self, self.main_font)
+
+    def _update_widget_fonts(self, widget, font):
+        try:
+            widget.setFont(font)
+        except:
+            pass
+        for child in widget.findChildren(QWidget):
+            try:
+                child.setFont(font)
+            except:
+                pass
+
+    def _update_ui_scale(self, value):
+        if self._ui_scale_job:
+            self._ui_scale_job.stop()
+        self._ui_scale_job = QTimer()
+        self._ui_scale_job.setSingleShot(True)
+        self._ui_scale_job.timeout.connect(lambda: self._do_update_ui_scale(value / 10.0))
+        self._ui_scale_job.start(400)
+
+    def clear_selection(self):
+        self.selected_files = []
+        self.broadcast_selection_change()
+
+    def toggle_selection(self, file):
+        if file in self.selected_files:
+            self.unselect_file(file)
+        else:
+            self.select_file(file)
+        self.update_button_status()
+
+    def update_button_status(self):
+        if not self.selected_files:
+            self.deselect_button.setEnabled(False)
+        else:
+            self.deselect_button.setEnabled(True)
+
+    def close_app(self):
         self._save_app_settings()
-        
-        # Accept the close event
+        for picker in list(self.open_picker_dialogs):
+            picker._on_close()
+        self.close()
+
+    def fullscreen_path(self, path):
+        try:
+            if os.path.isfile(path):
+                self.fullscreen_image_file(path)
+                return
+        except Exception as e:
+            log_error(f"path {path} has problems, message: {e}")
+            traceback.print_exc()
+
+    def open_path(self, path):
+        try:
+            if os.path.isdir(path):
+                self.open_image_directory(path)
+                return
+            if os.path.isfile(path):
+                self.open_image_file(path)
+                return
+        except Exception as e:
+            log_error(f"path {path} has problems, message: {e}")
+            traceback.print_exc()
+
+    def open_image_file(self, file_path):
+        self.open_image([file_path, None, False])
+
+    def fullscreen_image_file(self, file_path):
+        self.open_image([file_path, None, True])
+
+    def open_image_directory(self, directory_path):
+        if self.open_picker_dialogs:
+            self.new_picker_info = list(self.open_picker_dialogs[-1].get_picker_info())
+        self.open_picker_dialog([self.new_picker_info[0],
+                                  directory_path,
+                                  self.new_picker_info[2],
+                                  self.new_picker_info[3]])
+
+    def set_wp(self, path):
+        try:
+            if os.path.isfile(path):
+                set_wallpaper(path)
+        except Exception as e:
+            log_error(f"path {path} has problems, message: {e}")
+
+    def closeEvent(self, event):
+        self._save_app_settings()
+        for picker in list(self.open_picker_dialogs):
+            picker._on_close()
         event.accept()
 
 
 if __name__ == "__main__":
-    app = QApplication([])
-    app.setApplicationName("KuBux Image Manager")
-    
-    # Set application icon
-    icon_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "app-icon.png")
-    if os.path.exists(icon_path):
-        app.setWindowIcon(QIcon(icon_path))
-    
-    main_window = ImageBrowser()
-    app.exec_()
+    app = QApplication(sys.argv)
+    app.setApplicationName("kubux-image-manager")
+    manager = ImageManager()
+    sys.exit(app.exec())
