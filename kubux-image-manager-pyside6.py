@@ -1052,26 +1052,26 @@ class ImageViewer(QMainWindow):
         self.zoom_factor *= 1.25
         
         if x is not None and y is not None:
-            # Calculate the fractions to maintain zoom point
-            h_bar = self.scroll_area.horizontalScrollBar()
-            v_bar = self.scroll_area.verticalScrollBar()
-            x_fraction = (h_bar.value() + x) / (self.display_image.width)
-            y_fraction = (v_bar.value() + y) / (self.display_image.height)
+            # x is already the image coordinate (position within QLabel which is sized to image)
+            # No need to add scroll offset like tkinter's canvasx() - Qt gives us image coords directly
+            x_fraction = x / self.display_image.width
+            y_fraction = y / self.display_image.height
             
         self._update_image()
         
         if x is not None and y is not None:
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            
             new_x = x_fraction * self.display_image.width
             new_y = y_fraction * self.display_image.height
             
             canvas_width = self.scroll_area.viewport().width()
             canvas_height = self.scroll_area.viewport().height()
             
-            x_view_fraction = (new_x - canvas_width / 2) / self.display_image.width
-            y_view_fraction = (new_y - canvas_height / 2) / self.display_image.height
-            
-            h_bar.setValue(int(max(0, min(1, x_view_fraction)) * self.display_image.width))
-            v_bar.setValue(int(max(0, min(1, y_view_fraction)) * self.display_image.height))
+            # Center the view on the point new_x, new_y
+            h_bar.setValue(int(max(0, new_x - canvas_width / 2)))
+            v_bar.setValue(int(max(0, new_y - canvas_height / 2)))
 
     def _zoom_out(self, x=None, y=None):
         self.fit_to_window = False
@@ -1083,25 +1083,25 @@ class ImageViewer(QMainWindow):
             return
             
         if x is not None and y is not None:
-            h_bar = self.scroll_area.horizontalScrollBar()
-            v_bar = self.scroll_area.verticalScrollBar()
-            x_fraction = (h_bar.value() + x) / (self.display_image.width)
-            y_fraction = (v_bar.value() + y) / (self.display_image.height)
+            # x is already the image coordinate (position within QLabel which is sized to image)
+            x_fraction = x / self.display_image.width
+            y_fraction = y / self.display_image.height
             
         self._update_image()
         
         if x is not None and y is not None:
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            
             new_x = x_fraction * self.display_image.width
             new_y = y_fraction * self.display_image.height
             
             canvas_width = self.scroll_area.viewport().width()
             canvas_height = self.scroll_area.viewport().height()
             
-            x_view_fraction = (new_x - canvas_width / 2) / self.display_image.width
-            y_view_fraction = (new_y - canvas_height / 2) / self.display_image.height
-            
-            h_bar.setValue(int(max(0, min(1, x_view_fraction)) * self.display_image.width))
-            v_bar.setValue(int(max(0, min(1, y_view_fraction)) * self.display_image.height))
+            # Center the view on the point new_x, new_y
+            h_bar.setValue(int(max(0, new_x - canvas_width / 2)))
+            v_bar.setValue(int(max(0, new_y - canvas_height / 2)))
 
     def _rename_current_image(self, old_name, new_name):
         try:
