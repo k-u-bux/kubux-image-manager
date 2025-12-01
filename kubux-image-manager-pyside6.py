@@ -384,7 +384,8 @@ def get_or_make_pil(img_path, thumbnail_max_size):
 def pil_to_qpixmap(pil_image):
     if pil_image is None:
         return QPixmap()
-    if pil_image.mode not in ("RGB", "RGBA", "L", "1"):
+    # Convert all non-RGB/RGBA modes to RGBA for consistent handling
+    if pil_image.mode not in ("RGB", "RGBA"):
         pil_image = pil_image.convert("RGBA")
     if pil_image.mode == "RGB":
         data = pil_image.tobytes("raw", "RGB")
@@ -1485,9 +1486,12 @@ class ImagePicker(QMainWindow):
             btn.setIcon(QIcon(qt_image))
             btn.setIconSize(qt_image.size())
         
-        btn.clicked.connect(lambda checked=False, b=btn: self._toggle_selection_btn(b))
-        btn.setContextMenuPolicy(Qt.CustomContextMenu)
-        btn.customContextMenuRequested.connect(lambda pos, b=btn: self._open_context_menu(b, pos))
+        # Only connect signals once (check if already connected via attribute)
+        if not hasattr(btn, '_signals_connected'):
+            btn.clicked.connect(lambda checked=False, b=btn: self._toggle_selection_btn(b))
+            btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn.customContextMenuRequested.connect(lambda pos, b=btn: self._open_context_menu(b, pos))
+            btn._signals_connected = True
         
         if img_path in self.master.selected_files:
             btn.setStyleSheet("border: 3px solid blue;")
