@@ -988,7 +988,10 @@ class ImageViewer(QMainWindow):
             new_width = int(orig_width * self.zoom_factor)
             new_height = int(orig_height * self.zoom_factor)
 
-        self.display_image = resize_image(self.original_image, new_width, new_height)
+        self.display_image = self.original_image.resize(
+            (new_width, new_height), 
+            Image.LANCZOS
+        )
         pixmap = pil_to_qpixmap(self.display_image)
         self.canvas.setPixmap(pixmap)
         self.canvas.resize(pixmap.size())
