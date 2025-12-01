@@ -1050,7 +1050,28 @@ class ImageViewer(QMainWindow):
     def _zoom_in(self, x=None, y=None):
         self.fit_to_window = False
         self.zoom_factor *= 1.25
+        
+        if x is not None and y is not None:
+            # Calculate the fractions to maintain zoom point
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            x_fraction = (h_bar.value() + x) / (self.display_image.width)
+            y_fraction = (v_bar.value() + y) / (self.display_image.height)
+            
         self._update_image()
+        
+        if x is not None and y is not None:
+            new_x = x_fraction * self.display_image.width
+            new_y = y_fraction * self.display_image.height
+            
+            canvas_width = self.scroll_area.viewport().width()
+            canvas_height = self.scroll_area.viewport().height()
+            
+            x_view_fraction = (new_x - canvas_width / 2) / self.display_image.width
+            y_view_fraction = (new_y - canvas_height / 2) / self.display_image.height
+            
+            h_bar.setValue(int(max(0, min(1, x_view_fraction)) * self.display_image.width))
+            v_bar.setValue(int(max(0, min(1, y_view_fraction)) * self.display_image.height))
 
     def _zoom_out(self, x=None, y=None):
         self.fit_to_window = False
@@ -1058,7 +1079,29 @@ class ImageViewer(QMainWindow):
         min_zoom = 0.1
         if self.zoom_factor < min_zoom:
             self.fit_to_window = True
+            self._update_image()
+            return
+            
+        if x is not None and y is not None:
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            x_fraction = (h_bar.value() + x) / (self.display_image.width)
+            y_fraction = (v_bar.value() + y) / (self.display_image.height)
+            
         self._update_image()
+        
+        if x is not None and y is not None:
+            new_x = x_fraction * self.display_image.width
+            new_y = y_fraction * self.display_image.height
+            
+            canvas_width = self.scroll_area.viewport().width()
+            canvas_height = self.scroll_area.viewport().height()
+            
+            x_view_fraction = (new_x - canvas_width / 2) / self.display_image.width
+            y_view_fraction = (new_y - canvas_height / 2) / self.display_image.height
+            
+            h_bar.setValue(int(max(0, min(1, x_view_fraction)) * self.display_image.width))
+            v_bar.setValue(int(max(0, min(1, y_view_fraction)) * self.display_image.height))
 
     def _rename_current_image(self, old_name, new_name):
         try:
