@@ -611,6 +611,176 @@ def list_image_files(directory_path):
 DRAG_DELAY_MS = 250
 DRAG_THRESHOLD = 5
 
+def _bind_drop_generic(target_widget, handle_drop, attribute_name):
+    def wrapper(source_widget):
+        handle_drop(source_widget, target_widget)
+    setattr(target_widget, attribute_name, wrapper)
+
+def bind_drop(target_widget, handle_drop):
+    _bind_drop_generic(target_widget, handle_drop, 'handle_drop')
+
+def bind_right_drop(target_widget, handle_right_drop):
+    _bind_drop_generic(target_widget, handle_right_drop, 'handle_right_drop')
+
+
+class DragController(QObject):
+    """Manages drag-and-drop state for a source widget."""
+    
+    def __init__(self, source_widget, make_ghost, click_handler, button, attribute_name, picker):
+        super().__init__()
+        self.source_widget = source_widget
+        self.make_ghost = make_ghost
+        self.click_handler = click_handler
+        self.button = button  # 1 = left, 3 = right
+        self.attribute_name = attribute_name
+        self.picker = picker
+        
+        self.drag_start_timer = None
+        self.ghost = None
+        self.drag_start_x = 0
+        self.drag_start_y = 0
+        self.dragging = False
+        self.dragging_widget = None
+        
+    def on_press(self):
+        self.drag_start_x = QCursor.pos().x()
+        self.drag_start_y = QCursor.pos().y()
+        self.dragging_widget = self.source_widget
+        self.dragging = False
+        self.drag_start_timer = QTimer()
+        self.drag_start_timer.setSingleShot(True)
+        self.drag_start_timer.timeout.connect(self.start_drag)
+        self.drag_start_timer.start(DRAG_DELAY_MS)
+        
+    def on_motion(self):
+        if self.drag_start_timer and self.drag_start_timer.isActive() and self.dragging_widget:
+            current_pos = QCursor.pos()
+            distance_moved = math.sqrt((current_pos.x() - self.drag_start_x)**2 + 
+                                       (current_pos.y() - self.drag_start_y)**2)
+            if distance_moved > DRAG_THRESHOLD:
+                self.drag_start_timer.stop()
+                self.start_drag()
+                
+    def on_release(self):
+        if self.drag_start_timer and self.drag_start_timer.isActive():
+            self.drag_start_timer.stop()
+            self.drag_start_timer = None
+            # It was a click, not a drag
+            self.click_handler(self.source_widget)
+            self.dragging_widget = None
+        elif self.dragging and self.ghost:
+            self.end_drag()
+        
+    def start_drag(self):
+        self.drag_start_timer = None
+        self.dragging = True
+        self.ghost = self.make_ghost(self.dragging_widget, self.drag_start_x, self.drag_start_y)
+        self.ghost.show()
+        # Take over mouse tracking
+        QApplication.instance().installEventFilter(self)
+        
+    def eventFilter(self, obj, event):
+        if self.dragging and self.ghost:
+            if event.type() == QEvent.MouseMove:
+                pos = QCursor.pos()
+                self.ghost.move(pos.x() - 10, pos.y() - 10)
+                return True
+            elif event.type() == QEvent.MouseButtonRelease:
+                self.end_drag()
+                return True
+        return False
+        
+    def end_drag(self):
+        QApplication.instance().removeEventFilter(self)
+        x, y = QCursor.pos().x(), QCursor.pos().y()
+        if self.ghost:
+            self.ghost.close()
+            self.ghost = None
+        
+        # Find the widget under the cursor
+        target_widget = QApplication.widgetAt(x, y)
+        while target_widget:
+            if hasattr(target_widget, self.attribute_name):
+                getattr(target_widget, self.attribute_name)(self.dragging_widget)
+                break
+            target_widget = target_widget.parent()
+        
+        self.dragging = False
+        self.dragging_widget = None
+
+
+def bind_click_or_drag(source_widget, make_ghost, click_handler, picker):
+    """Sets up left-click-or-drag on a widget. Click toggles selection, drag moves selected files."""
+    controller = DragController(source_widget, make_ghost, click_handler, 1, 'handle_drop', picker)
+    source_widget._left_drag_controller = controller
+    # Override mouse events
+    original_press = source_widget.mousePressEvent
+    original_move = source_widget.mouseMoveEvent
+    original_release = source_widget.mouseReleaseEvent
+    
+    def new_press(event):
+        if event.button() == Qt.LeftButton:
+            controller.on_press()
+        else:
+            original_press(event)
+    
+    def new_move(event):
+        if controller.dragging_widget:
+            controller.on_motion()
+        else:
+            original_move(event)
+    
+    def new_release(event):
+        if event.button() == Qt.LeftButton and controller.dragging_widget:
+            controller.on_release()
+        else:
+            original_release(event)
+    
+    source_widget.mousePressEvent = new_press
+    source_widget.mouseMoveEvent = new_move
+    source_widget.mouseReleaseEvent = new_release
+
+
+def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler, picker):
+    """Sets up right-click-or-drag on a widget. Right-click opens context menu, drag moves single file."""
+    controller = DragController(source_widget, make_ghost, right_click_handler, 3, 'handle_right_drop', picker)
+    source_widget._right_drag_controller = controller
+    # We need to handle right button separately
+    original_press = source_widget.mousePressEvent
+    original_move = source_widget.mouseMoveEvent
+    original_release = source_widget.mouseReleaseEvent
+    
+    def new_press(event):
+        if event.button() == Qt.RightButton:
+            controller.on_press()
+        else:
+            if hasattr(source_widget, '_left_drag_controller'):
+                # Let left controller handle it
+                if event.button() == Qt.LeftButton:
+                    source_widget._left_drag_controller.on_press()
+                    return
+            original_press(event)
+    
+    def new_move(event):
+        if controller.dragging_widget:
+            controller.on_motion()
+        elif hasattr(source_widget, '_left_drag_controller') and source_widget._left_drag_controller.dragging_widget:
+            source_widget._left_drag_controller.on_motion()
+        else:
+            original_move(event)
+    
+    def new_release(event):
+        if event.button() == Qt.RightButton and controller.dragging_widget:
+            controller.on_release()
+        elif event.button() == Qt.LeftButton and hasattr(source_widget, '_left_drag_controller') and source_widget._left_drag_controller.dragging_widget:
+            source_widget._left_drag_controller.on_release()
+        else:
+            original_release(event)
+    
+    source_widget.mousePressEvent = new_press
+    source_widget.mouseMoveEvent = new_move
+    source_widget.mouseReleaseEvent = new_release
+
 
 # --- helper to get font from widget hierarchy ---
 
@@ -1183,6 +1353,8 @@ class BreadCrumNavigator(QWidget):
 
         for i, btn in enumerate(btn_list):
             btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            bind_drop(btn, self._handle_drop)
+            bind_right_drop(btn, self._handle_right_drop)
             self._layout.addWidget(btn)
             if i + 1 < len(btn_list):
                 sep = QLabel("/")
@@ -1194,6 +1366,15 @@ class BreadCrumNavigator(QWidget):
                 btn.pressed.disconnect()
                 btn.pressed.connect(lambda b=btn: self._on_button_press_menu(b))
         self._layout.addStretch(1)
+
+    def _handle_drop(self, source_button, target_button):
+        # Get the picker (go up hierarchy: BreadCrumNavigator -> _top_frame -> central_widget -> ImagePicker)
+        picker = self.parent().parent().parent()
+        picker.master.move_selected_files_to_directory(source_button.img_path, target_button.path)
+        
+    def _handle_right_drop(self, source_button, target_button):
+        picker = self.parent().parent().parent()
+        picker.master.move_file_to_directory(source_button.img_path, target_button.path)
 
     def _trigger_navigate(self, path):
         if self._on_navigate_callback:
@@ -1448,6 +1629,12 @@ class ImagePicker(QMainWindow):
         self.breadcrumb_nav.set_path(self.image_dir)
         self._gallery_grid.regrid()
         
+        # Bind drop handlers for drag-and-drop to this picker
+        bind_drop(self._gallery_scroll, self._handle_drop)
+        bind_right_drop(self._gallery_scroll, self._handle_right_drop)
+        bind_drop(self._gallery_grid, self._handle_drop)
+        bind_right_drop(self._gallery_grid, self._handle_right_drop)
+        
         QTimer.singleShot(100, self.activateWindow)
         self.show()
 
@@ -1478,12 +1665,55 @@ class ImagePicker(QMainWindow):
         ghost.move(x - 10, y - 10)
         return ghost
 
+    def _make_right_ghost(self, button, x, y):
+        ghost = QDialog(self.master, Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        ghost.setAttribute(Qt.WA_TranslucentBackground)
+        ghost.setWindowOpacity(0.7)
+        
+        layout = QVBoxLayout(ghost)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        label = QLabel()
+        label.setPixmap(button.qt_image)
+        layout.addWidget(label)
+        
+        ghost.adjustSize()
+        ghost.move(x - 10, y - 10)
+        return ghost
+
+    def _handle_drop(self, source_button, target_picker):
+        self.master.move_selected_files_to_directory(source_button.img_path, target_picker.image_dir)
+        
+    def _handle_right_drop(self, source_button, target_picker):
+        self.master.move_file_to_directory(source_button.img_path, target_picker.image_dir)
+
     def _exec_cmd_for_image(self, button):
         args = [button.img_path]
         self.master.execute_current_command_with_args(args)
 
     def _static_configure_picker_button(self, btn, img_path):
         pass
+
+    def _toggle_selection(self, btn):
+        self.master.toggle_selection(btn.img_path)
+
+    def _open_right_click_context_menu(self, btn):
+        options = self.master.command_field.current_cmd_list()
+        global_pos = QCursor.pos()
+        context_menu = LongMenu(
+            self,
+            default_option=None,
+            other_options=options,
+            font=self.master.main_font,
+            x_pos=global_pos.x() - 30,
+            y_pos=global_pos.y() - 30,
+            pos="bottom"
+        )
+        context_menu.exec()
+        command = context_menu.result
+        if command:
+            args = [btn.img_path]
+            self.master.execute_command_with_args(command, args)
 
     def _dynamic_configure_picker_button(self, btn, img_path):
         cache_key = uniq_file_id(img_path, self.thumbnail_width)
@@ -1495,12 +1725,11 @@ class ImagePicker(QMainWindow):
             btn.setIcon(QIcon(qt_image))
             btn.setIconSize(qt_image.size())
         
-        # Only connect signals once (check if already connected via attribute)
-        if not hasattr(btn, '_signals_connected'):
-            btn.clicked.connect(lambda checked=False, b=btn: self._toggle_selection_btn(b))
-            btn.setContextMenuPolicy(Qt.CustomContextMenu)
-            btn.customContextMenuRequested.connect(lambda pos, b=btn: self._open_context_menu(b, pos))
-            btn._signals_connected = True
+        # Only setup drag handlers once (check if already connected via attribute)
+        if not hasattr(btn, '_drag_connected'):
+            bind_click_or_drag(btn, self._make_ghost, self._toggle_selection, self)
+            bind_right_click_or_drag(btn, self._make_right_ghost, self._open_right_click_context_menu, self)
+            btn._drag_connected = True
         
         if img_path in self.master.selected_files:
             btn.setStyleSheet("border: 3px solid blue;")
