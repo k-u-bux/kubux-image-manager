@@ -1681,11 +1681,21 @@ class ImagePicker(QMainWindow):
         ghost.move(x - 10, y - 10)
         return ghost
 
-    def _handle_drop(self, source_button, target_picker):
-        self.master.move_selected_files_to_directory(source_button.img_path, target_picker.image_dir)
+    def _handle_drop(self, source_button, target_widget):
+        # target_widget could be the picker, the scroll area, or the grid - get image_dir appropriately
+        if hasattr(target_widget, 'image_dir'):
+            target_dir = target_widget.image_dir
+        else:
+            target_dir = self.image_dir
+        self.master.move_selected_files_to_directory(source_button.img_path, target_dir)
         
-    def _handle_right_drop(self, source_button, target_picker):
-        self.master.move_file_to_directory(source_button.img_path, target_picker.image_dir)
+    def _handle_right_drop(self, source_button, target_widget):
+        # target_widget could be the picker, the scroll area, or the grid - get image_dir appropriately
+        if hasattr(target_widget, 'image_dir'):
+            target_dir = target_widget.image_dir
+        else:
+            target_dir = self.image_dir
+        self.master.move_file_to_directory(source_button.img_path, target_dir)
 
     def _exec_cmd_for_image(self, button):
         args = [button.img_path]
