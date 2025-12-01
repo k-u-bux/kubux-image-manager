@@ -1160,6 +1160,7 @@ class BreadCrumNavigator(QWidget):
             btn = QPushButton(btn_text)
             btn.setFlat(True)
             btn.setFont(self.font)
+            btn.setStyleSheet("padding: 0px; margin: 0px;")
             btn.path = path
             btn.pressed.connect(lambda b=btn: self._on_button_press(b))
             btn.released.connect(lambda b=btn: self._on_button_release(b))
@@ -1171,20 +1172,25 @@ class BreadCrumNavigator(QWidget):
         btn = QPushButton(btn_text)
         btn.setFlat(True)
         btn.setFont(self.font)
+        btn.setStyleSheet("padding: 0px; margin: 0px;")
         btn.path = current_display_path
         btn.pressed.connect(lambda b=btn: self._on_button_press(b))
         btn.released.connect(lambda b=btn: self._on_button_release(b))
         btn_list.insert(0, btn)
 
         for i, btn in enumerate(btn_list):
+            btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
             self._layout.addWidget(btn)
             if i + 1 < len(btn_list):
                 sep = QLabel("/")
+                sep.setFont(self.font)
+                sep.setContentsMargins(0, 0, 0, 0)
+                sep.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
                 self._layout.addWidget(sep)
             if i == 0:
                 btn.pressed.disconnect()
                 btn.pressed.connect(lambda b=btn: self._on_button_press_menu(b))
-        self._layout.addStretch()
+        self._layout.addStretch(1)
 
     def _trigger_navigate(self, path):
         if self._on_navigate_callback:
