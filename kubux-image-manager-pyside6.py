@@ -1826,6 +1826,20 @@ class ImagePicker(QMainWindow):
         self.thumbnail_width = value
         self._regrid()
 
+    def keyPressEvent(self, event):
+        key = event.key()
+        scrollbar = self._gallery_scroll.verticalScrollBar()
+        if key == Qt.Key_Up:
+            scrollbar.setValue(scrollbar.value() - scrollbar.singleStep())
+        elif key == Qt.Key_Down:
+            scrollbar.setValue(scrollbar.value() + scrollbar.singleStep())
+        elif key == Qt.Key_PageUp:
+            scrollbar.setValue(scrollbar.value() - scrollbar.pageStep())
+        elif key == Qt.Key_PageDown:
+            scrollbar.setValue(scrollbar.value() + scrollbar.pageStep())
+        else:
+            super().keyPressEvent(event)
+
     def closeEvent(self, event):
         if self in self.master.open_picker_dialogs:
             self.background_worker.stop()
