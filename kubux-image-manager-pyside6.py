@@ -162,8 +162,11 @@ def get_linux_system_ui_font_info():
             return font_name, font_size
         return "Sans", 10
 
+def get_linux_ui_font_info():
+    return get_linux_system_ui_font_info()
+
 def get_linux_ui_font():
-    font_name, font_size = get_linux_system_ui_font_info()
+    font_name, font_size = get_linux_ui_font_info()
     return QFont(font_name, font_size)
 
     
@@ -685,7 +688,7 @@ class ImageViewer(QMainWindow):
     def __init__(self, master, image_info):
         super().__init__(master)
         self.master = master
-        self.setWindowTitle("kubux-image-manager")
+        self.setWindowTitle("kubux image manager")
         self.image_path = image_info[0]
         self.file_name = os.path.basename(self.image_path)
         self.dir_name = os.path.dirname(self.image_path)
@@ -1270,7 +1273,7 @@ class ImagePicker(QMainWindow):
     def __init__(self, master, picker_info=None):
         super().__init__(master)
         self.master = master
-        self.setWindowTitle("kubux-image-manager")
+        self.setWindowTitle("kubux image manager")
         self.thumbnail_width = picker_info[0]
         self.image_dir = picker_info[1]
         self.list_cmd = picker_info[2]
@@ -2095,6 +2098,6 @@ class ImageManager(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    app.setApplicationName("kubux-image-manager")
+    app.setApplicationName("kubux image manager")
     manager = ImageManager()
     sys.exit(app.exec())
