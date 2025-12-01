@@ -1345,7 +1345,8 @@ class ImagePicker(QMainWindow):
         
         self.breadcrumb_nav = BreadCrumNavigator(
             self._top_frame,
-            on_navigate_callback=self._browse_directory
+            on_navigate_callback=self._browse_directory,
+            font=get_font(self)
         )
         top_layout.addWidget(self.breadcrumb_nav, 1)
         
