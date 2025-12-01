@@ -1175,8 +1175,7 @@ class BreadCrumNavigator(QWidget):
         btn.released.connect(lambda b=btn: self._on_button_release(b))
         btn_list.insert(0, btn)
 
-        self._layout.addStretch()
-        for i, btn in enumerate(reversed(btn_list)):
+        for i, btn in enumerate(btn_list):
             self._layout.addWidget(btn)
             if i + 1 < len(btn_list):
                 sep = QLabel("/")
@@ -1184,6 +1183,7 @@ class BreadCrumNavigator(QWidget):
             if i == 0:
                 btn.pressed.disconnect()
                 btn.pressed.connect(lambda b=btn: self._on_button_press_menu(b))
+        self._layout.addStretch()
 
     def _trigger_navigate(self, path):
         if self._on_navigate_callback:
