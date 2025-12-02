@@ -275,15 +275,30 @@ def move_file_to_directory(file_path, target_dir_path):
     
 # --- watch directory ---
 
-class DirectoryEventHandler(FileSystemEventHandler):
+class DirectoryEventHandler(QObject, FileSystemEventHandler):
+    """Event handler for watchdog that emits a Qt signal when directory changes.
+    
+    Must inherit from QObject first for signals to work, and FileSystemEventHandler second.
+    The signal mechanism ensures thread-safe communication from watchdog's background thread
+    to the main Qt thread.
+    """
+    directory_changed = Signal()
+    
     def __init__(self, directory, image_picker):
+        QObject.__init__(self)
+        FileSystemEventHandler.__init__(self)
         log_debug(f"Initializing event handler for {directory} with picker {image_picker}")
         self.image_picker = image_picker
         self.directory = directory
+        # Connect signal to the broadcast method - this connection ensures the slot
+        # runs on the main thread since image_picker.master lives there
+        self.directory_changed.connect(self.image_picker.master.broadcast_contents_change)
         
     def on_any_event(self, event):
         log_debug(f"directory {self.directory} has changed.")
-        QTimer.singleShot(0, self.image_picker.master.broadcast_contents_change)
+        # Emit signal - this is thread-safe and will invoke the connected slot
+        # on the main thread via Qt's event loop
+        self.directory_changed.emit()
 
 
 class DirectoryWatcher():
