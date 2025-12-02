@@ -2388,12 +2388,12 @@ class ImageManager(tk.Tk):
                 if path_list:
                     self.set_wp(path_list[-1])
             elif ( list_cmd := strip_prefix("Select:", cmd) ) is not None:
-                log_action(f"execute as an internal command: Select: {files}")
+                log_action(f"execute as an internal command: Select: {list_cmd}")
                 status_change = True
                 file_list = filter_for_files(list_cmd)
                 for file in file_list: self.select_file(file)
             elif ( list_cmd := strip_prefix("Deselect:", cmd) ) is not None:
-                log_action(f"execute as an internal command: Deselect: {files}")
+                log_action(f"execute as an internal command: Deselect: {list_cmd}")
                 status_change = True
                 file_list = filter_for_files(list_cmd)
                 for file in file_list: self.unselect_file(file)
