@@ -1152,22 +1152,25 @@ class ImageViewer(QMainWindow):
 
 
 class ThumbnailButton(QPushButton):
+    BORDER_WIDTH = 3
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.img_path = None
         self.cache_key = None
         self.qt_image = None
         self.setCursor(Qt.PointingHandCursor)
-        # Remove all padding/margins to make button fit tightly around image
-        self.setStyleSheet("padding: 0px; margin: 0px; border: none;")
+        # Use transparent border by default so space is reserved for selection border
+        self.setStyleSheet(f"padding: 0px; margin: 0px; border: {self.BORDER_WIDTH}px solid transparent;")
         
     def set_image(self, pixmap):
-        """Set the button's image and resize to fit exactly."""
+        """Set the button's image and resize to fit exactly plus border space."""
         self.qt_image = pixmap
         self.setIcon(QIcon(pixmap))
         self.setIconSize(pixmap.size())
-        # Set fixed size to match the pixmap exactly (plus border when selected)
-        self.setFixedSize(pixmap.size())
+        # Set fixed size to match the pixmap plus border on each side
+        self.setFixedSize(pixmap.width() + 2 * self.BORDER_WIDTH, 
+                         pixmap.height() + 2 * self.BORDER_WIDTH)
 
 
 class DirectoryThumbnailGrid(QWidget):
@@ -1815,9 +1818,9 @@ class ImagePicker(QMainWindow):
             btn._drag_connected = True
         
         if img_path in self.master.selected_files:
-            btn.setStyleSheet("padding: 0px; margin: 0px; border: 3px solid blue;")
+            btn.setStyleSheet(f"padding: 0px; margin: 0px; border: {ThumbnailButton.BORDER_WIDTH}px solid blue;")
         else:
-            btn.setStyleSheet("padding: 0px; margin: 0px;")
+            btn.setStyleSheet(f"padding: 0px; margin: 0px; border: {ThumbnailButton.BORDER_WIDTH}px solid transparent;")
 
     def _toggle_selection_btn(self, btn):
         self.master.toggle_selection(btn.img_path)
