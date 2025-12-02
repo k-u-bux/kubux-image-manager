@@ -756,10 +756,12 @@ def bind_click_or_drag(source_widget, make_ghost, click_handler, picker):
     source_widget.mouseReleaseEvent = new_release
 
 
-def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler, picker):
-    """Sets up right-click-or-drag on a widget. Right-click opens context menu, drag moves single file."""
+def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler, picker, shift_click_handler=None):
+    """Sets up right-click-or-drag on a widget. Right-click opens context menu, drag moves single file.
+    Shift+Right-click calls shift_click_handler if provided."""
     controller = DragController(source_widget, make_ghost, right_click_handler, 3, 'handle_right_drop', picker)
     source_widget._right_drag_controller = controller
+    source_widget._shift_right_click_handler = shift_click_handler
     # We need to handle right button separately
     original_press = source_widget.mousePressEvent
     original_move = source_widget.mouseMoveEvent
@@ -767,6 +769,10 @@ def bind_right_click_or_drag(source_widget, make_ghost, right_click_handler, pic
     
     def new_press(event):
         if event.button() == Qt.RightButton:
+            # Check for Shift modifier - if Shift is held, execute immediately
+            if event.modifiers() & Qt.ShiftModifier and shift_click_handler:
+                shift_click_handler(source_widget)
+                return
             controller.on_press()
         else:
             if hasattr(source_widget, '_left_drag_controller'):
@@ -1151,8 +1157,17 @@ class ThumbnailButton(QPushButton):
         self.img_path = None
         self.cache_key = None
         self.qt_image = None
-        self.setFlat(True)
         self.setCursor(Qt.PointingHandCursor)
+        # Remove all padding/margins to make button fit tightly around image
+        self.setStyleSheet("padding: 0px; margin: 0px; border: none;")
+        
+    def set_image(self, pixmap):
+        """Set the button's image and resize to fit exactly."""
+        self.qt_image = pixmap
+        self.setIcon(QIcon(pixmap))
+        self.setIconSize(pixmap.size())
+        # Set fixed size to match the pixmap exactly (plus border when selected)
+        self.setFixedSize(pixmap.size())
 
 
 class DirectoryThumbnailGrid(QWidget):
@@ -1193,9 +1208,7 @@ class DirectoryThumbnailGrid(QWidget):
             qt_image = get_or_make_qt_by_key(cache_key, img_path, width)
             btn = ThumbnailButton(self)
             btn.cache_key = cache_key
-            btn.qt_image = qt_image
-            btn.setIcon(QIcon(qt_image))
-            btn.setIconSize(qt_image.size())
+            btn.set_image(qt_image)
             self._widget_cache[cache_key] = btn
             if self._static_button_config_callback:
                 self._static_button_config_callback(btn, img_path)
@@ -1260,7 +1273,7 @@ class DirectoryThumbnailGrid(QWidget):
                 continue
             row, col_idx = divmod(i, desired_content_cols)
             widget.show()
-            self._layout.addWidget(widget, row, col_idx)
+            self._layout.addWidget(widget, row, col_idx, Qt.AlignCenter)
 
         while len(self._widget_cache) > self._cache_size:
             self._widget_cache.popitem(last=False)
@@ -1792,20 +1805,19 @@ class ImagePicker(QMainWindow):
         if btn.cache_key != cache_key:
             btn.cache_key = cache_key
             qt_image = get_or_make_qt_by_key(cache_key, img_path, self.thumbnail_width)
-            btn.qt_image = qt_image
-            btn.setIcon(QIcon(qt_image))
-            btn.setIconSize(qt_image.size())
+            btn.set_image(qt_image)
         
         # Only setup drag handlers once (check if already connected via attribute)
         if not hasattr(btn, '_drag_connected'):
             bind_click_or_drag(btn, self._make_ghost, self._toggle_selection, self)
-            bind_right_click_or_drag(btn, self._make_right_ghost, self._open_right_click_context_menu, self)
+            bind_right_click_or_drag(btn, self._make_right_ghost, self._open_right_click_context_menu, self, 
+                                     shift_click_handler=self._exec_cmd_for_image)
             btn._drag_connected = True
         
         if img_path in self.master.selected_files:
-            btn.setStyleSheet("border: 3px solid blue;")
+            btn.setStyleSheet("padding: 0px; margin: 0px; border: 3px solid blue;")
         else:
-            btn.setStyleSheet("")
+            btn.setStyleSheet("padding: 0px; margin: 0px;")
 
     def _toggle_selection_btn(self, btn):
         self.master.toggle_selection(btn.img_path)
@@ -1898,6 +1910,8 @@ class ImagePicker(QMainWindow):
             scrollbar.setValue(scrollbar.value() - scrollbar.pageStep())
         elif key == Qt.Key_PageDown:
             scrollbar.setValue(scrollbar.value() + scrollbar.pageStep())
+        elif key == Qt.Key_Escape:
+            self._on_close()
         else:
             super().keyPressEvent(event)
 
