@@ -238,6 +238,7 @@ def make_uniq(the_list):
 def prepend_or_move_to_front(entry, the_list):
     the_list.insert( 0, entry )
     make_uniq(the_list)
+    remove_falsy(the_list)
     
         
 # --- file ops ---
