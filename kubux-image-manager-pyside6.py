@@ -1562,6 +1562,11 @@ class ImagePicker(QMainWindow):
         geom = self.saveGeometry().toBase64().data().decode()
         return self.thumbnail_width, self.image_dir, self.list_cmd, geom
 
+    def _on_shell(self):
+        terminal = os.environ.get('TERMINAL', 'xterm')
+        subprocess.Popen([terminal], 
+                         cwd=self.image_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     def _on_clone(self):
         self.master.open_picker_dialog(self.get_picker_info())
 
@@ -1619,6 +1624,11 @@ class ImagePicker(QMainWindow):
         )
         top_layout.addWidget(self.breadcrumb_nav, 1)
         
+        shell_btn = QPushButton("Shell")
+        shell_btn.setFont(get_font(self))
+        shell_btn.clicked.connect(self._on_shell)
+        top_layout.addWidget(shell_btn)
+
         clone_btn = QPushButton("Clone")
         clone_btn.setFont(get_font(self))
         clone_btn.clicked.connect(self._on_clone)
