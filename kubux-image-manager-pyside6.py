@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPush
                               QListWidget, QListWidgetItem, QSplitter, QSpacerItem)
 from PySide6.QtGui import (QPixmap, QImage, QPainter, QColor, QFont, QFontMetrics,
                           QTextCursor, QDrag, QTextCharFormat, QIcon, QAction, 
-                          QCursor, QKeySequence, QPalette, QTextBlockFormat)
+                          QCursor, QKeySequence, QPalette, QTextBlockFormat, QGuiApplication)
 
 # External library imports
 from watchdog.events import FileSystemEventHandler
@@ -1676,7 +1676,7 @@ class ImagePicker(QMainWindow):
         
         self.thumbnail_slider = QSlider(Qt.Horizontal)
         self.thumbnail_slider.setMinimum(96)
-        self.thumbnail_slider.setMaximum(1920)
+        self.thumbnail_slider.setMaximum( QGuiApplication.primaryScreen().availableGeometry().width() - 96 )
         self.thumbnail_slider.setSingleStep(20)
         self.thumbnail_slider.setValue(self.thumbnail_width)
         self.thumbnail_slider.valueChanged.connect(self._update_thumbnail_width)
