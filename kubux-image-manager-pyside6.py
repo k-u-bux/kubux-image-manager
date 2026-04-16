@@ -1537,7 +1537,7 @@ class ImagePicker(QMainWindow):
         self.image_dir = picker_info[1]
         self.list_cmd = picker_info[2]
         self.window_geometry = picker_info[3]
-        self.sizing_mode = picker_info[4] if len(picker_info) > 4 else "slider"
+        self.sizing_mode = picker_info[4]
         self.background_worker = BackgroundWorker(self.image_dir, self.thumbnail_width)
         self.update_thumbnail_job_id = None
         self.watcher = DirectoryWatcher(self)
@@ -1916,8 +1916,8 @@ class ImagePicker(QMainWindow):
 
     def _do_update_thumbnail_width(self, value):
         self.thumbnail_width = value
-        self.sizing_mode = "slider"
         self._regrid()
+        self._redraw()
 
     def _get_max_possible_columns(self):
         """Calculate the maximum number of columns that can fit given minimum thumbnail size of 96px."""
@@ -1989,15 +1989,15 @@ class ImagePicker(QMainWindow):
             col_count = int(selection.split()[0])
             self.sizing_mode = f"{col_count} columns"
             # Compute width for this column count
-            new_width = self._compute_width_for_columns(col_count)
-            self.thumbnail_width = new_width
-            self._update_sizing_ui()
+            self._do_update_thumbnail_width( self._compute_width_for_columns(col_count) )
             self._regrid()
+            self._update_sizing_ui()
 
     def _update_sizing_ui(self):
         """Update button label and slider visibility based on sizing mode."""
         if self.sizing_mode == "slider":
             self.size_menu_button.setText("Size:")
+            self.thumbnail_slider.setValue(self.thumbnail_width)
             self.thumbnail_slider.setVisible(True)
         else:
             # In column mode, show actual column count
@@ -2244,7 +2244,7 @@ class ImageManager(QMainWindow):
         self.commands = self.app_settings.get("commands", "Open: {*}\nSetWP: *\nOpen: ${HOME}/Pictures")
         self.current_index = int(self.app_settings.get("current_index", 1))
         self.selected_files = self.app_settings.get("selected_files", [])
-        self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None])
+        self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider"])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
         self.open_image_info = self.app_settings.get("open_image_info", [])
         self.list_commands = self.app_settings.get("list_commands", ["ls", "find . -maxdepth 1 -type f"])
@@ -2517,12 +2517,11 @@ class ImageManager(QMainWindow):
     def open_image_directory(self, directory_path):
         if self.open_picker_dialogs:
             self.new_picker_info = list(self.open_picker_dialogs[-1].get_picker_info())
-        sizing_mode = self.new_picker_info[4] if len(self.new_picker_info) > 4 else "slider"
         self.open_picker_dialog([self.new_picker_info[0],
                                   directory_path,
                                   self.new_picker_info[2],
                                   self.new_picker_info[3],
-                                  sizing_mode])
+                                  self.new_picker_info[4]])
 
     def set_wp(self, path):
         try:
