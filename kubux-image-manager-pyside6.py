@@ -1548,6 +1548,9 @@ class ImagePicker(QMainWindow):
             self.resize(1000, 600)
         
         self._create_widgets()
+        self._regrid()
+        self._redraw()
+        self._update_sizing_ui()
         self._cache_timer = QTimer(self)
         self._cache_timer.timeout.connect(self._cache_widget)
         self._cache_timer.start(50)
@@ -1718,9 +1721,6 @@ class ImagePicker(QMainWindow):
         self.background_worker.run(self.image_dir, self.thumbnail_width)
         self.breadcrumb_nav.set_path(self.image_dir)
         self._gallery_grid.regrid()
-        
-        # Update button label and slider visibility based on sizing mode
-        self._update_sizing_ui()
         
         # Bind drop handlers for drag-and-drop to this picker
         bind_drop(self._gallery_scroll, self._handle_drop)
