@@ -1257,16 +1257,12 @@ class DirectoryThumbnailGrid(QWidget):
     def _calculate_columns(self, frame_width):
         if frame_width <= 0:
             return 1
-        spacing = self._layout.spacing()  # Get the actual spacing (4px)
-        border_width = self._item_border_width
-        button_width = self._item_width + (2 * border_width)
-        buffer = 10
-        available = frame_width - buffer
-        if available <= 0:
+        item_total_occupancy_width = self._item_width + (2 * self._item_border_width)
+        buffer_for_gutters_and_edges = 10
+        available_width_for_items = frame_width - buffer_for_gutters_and_edges
+        if available_width_for_items <= 0:
             return 1
-        # Formula: available = n_cols * button_width + (n_cols - 1) * spacing
-        # Rearranged: n_cols = (available + spacing) / (button_width + spacing)
-        calculated_cols = max(1, (available + spacing) // (button_width + spacing))
+        calculated_cols = max(1, available_width_for_items // item_total_occupancy_width)
         return calculated_cols
 
     def _layout_the_grid(self):
