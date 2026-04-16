@@ -1537,6 +1537,7 @@ class ImagePicker(QMainWindow):
         self.image_dir = picker_info[1]
         self.list_cmd = picker_info[2]
         self.window_geometry = picker_info[3]
+        self.sizing_mode = picker_info[4] if len(picker_info) > 4 else "slider"
         self.background_worker = BackgroundWorker(self.image_dir, self.thumbnail_width)
         self.update_thumbnail_job_id = None
         self.watcher = DirectoryWatcher(self)
@@ -1560,7 +1561,7 @@ class ImagePicker(QMainWindow):
 
     def get_picker_info(self):
         geom = self.saveGeometry().toBase64().data().decode()
-        return self.thumbnail_width, self.image_dir, self.list_cmd, geom
+        return self.thumbnail_width, self.image_dir, self.list_cmd, geom, self.sizing_mode
 
     def _on_shell(self):
         terminal = os.environ.get('TERMINAL', 'xterm')
@@ -1670,9 +1671,10 @@ class ImagePicker(QMainWindow):
         bot_layout = QHBoxLayout(self._bot_frame)
         bot_layout.setContentsMargins(0, 0, 0, 0)
         
-        size_label = QLabel("Size:")
-        size_label.setFont(get_font(self))
-        bot_layout.addWidget(size_label)
+        self.size_menu_button = QPushButton("Size:")
+        self.size_menu_button.setFont(get_font(self))
+        self.size_menu_button.clicked.connect(self._show_sizing_menu)
+        bot_layout.addWidget(self.size_menu_button)
         
         self.thumbnail_slider = QSlider(Qt.Horizontal)
         self.thumbnail_slider.setMinimum(96)
@@ -1682,6 +1684,9 @@ class ImagePicker(QMainWindow):
         self.thumbnail_slider.valueChanged.connect(self._update_thumbnail_width)
         self.thumbnail_slider.setFixedWidth(150)
         bot_layout.addWidget(self.thumbnail_slider)
+        
+        # Update button label and slider visibility based on sizing mode
+        self._update_sizing_ui()
         
         show_label = QLabel("Show:")
         show_label.setFont(get_font(self))
@@ -1911,7 +1916,100 @@ class ImagePicker(QMainWindow):
 
     def _do_update_thumbnail_width(self, value):
         self.thumbnail_width = value
+        self.sizing_mode = "slider"
         self._regrid()
+
+    def _get_max_possible_columns(self):
+        """Calculate the maximum number of columns that can fit given minimum thumbnail size of 96px."""
+        window_width = self._gallery_scroll.viewport().width()
+        MIN_THUMB_SIZE = 96
+        border_width = 6
+        spacing = 4
+        # Account for borders, spacing, and buffer
+        available = window_width - 10
+        item_width = MIN_THUMB_SIZE + (2 * border_width)
+        max_cols = max(1, (available + spacing) // (item_width + spacing))
+        return max_cols
+
+    def _compute_width_for_columns(self, target_cols):
+        """Compute thumbnail width to fit target_cols columns in current window."""
+        window_width = self._gallery_scroll.viewport().width()
+        border_width = 6
+        spacing = 4
+        buffer = 10
+        available = window_width - buffer
+        # Formula: available = target_cols * (thumb_width + 2*border) + (target_cols - 1) * spacing
+        # Solve for thumb_width
+        thumb_width = (available - (target_cols - 1) * spacing) / target_cols - (2 * border_width)
+        return max(96, int(thumb_width))
+
+    def _get_current_column_count(self):
+        """Get the actual number of columns currently being displayed."""
+        parent_width = self._gallery_scroll.viewport().width()
+        return self._gallery_grid._calculate_columns(parent_width)
+
+    def _show_sizing_menu(self):
+        """Show menu with slider and column options, greying out infeasible column counts."""
+        max_cols = self._get_max_possible_columns()
+        
+        # Build option list
+        options = ["slider"]
+        column_options = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 20, 24]
+        for col_count in column_options:
+            options.append(f"{col_count} columns")
+        
+        btn_pos = self.size_menu_button.mapToGlobal(QPoint(0, 0))
+        menu = LongMenu(
+            self,
+            default_option=None,
+            other_options=options,
+            font=get_font(self),
+            x_pos=btn_pos.x(),
+            y_pos=btn_pos.y(),
+            pos="bottom"
+        )
+        
+        # Grey out infeasible options
+        for i in range(menu._listbox.count()):
+            item = menu._listbox.item(i)
+            text = item.text()
+            if text != "slider" and "columns" in text:
+                col_num = int(text.split()[0])
+                if col_num > max_cols:
+                    item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
+                    item.setForeground(QColor("#888888"))
+        
+        menu.exec()
+        selection = menu.result
+        
+        if selection == "slider":
+            self.sizing_mode = "slider"
+            self._update_sizing_ui()
+        elif selection and "columns" in selection:
+            col_count = int(selection.split()[0])
+            self.sizing_mode = f"{col_count} columns"
+            # Compute width for this column count
+            new_width = self._compute_width_for_columns(col_count)
+            self.thumbnail_width = new_width
+            self._update_sizing_ui()
+            self._regrid()
+
+    def _update_sizing_ui(self):
+        """Update button label and slider visibility based on sizing mode."""
+        if self.sizing_mode == "slider":
+            self.size_menu_button.setText("Size:")
+            self.thumbnail_slider.setVisible(True)
+        else:
+            # In column mode, show actual column count
+            actual_cols = self._get_current_column_count()
+            self.size_menu_button.setText(f"{actual_cols} columns")
+            self.thumbnail_slider.setVisible(False)
+
+    def resizeEvent(self, event):
+        """Handle window resize - update button label in column mode."""
+        super().resizeEvent(event)
+        if self.sizing_mode != "slider":
+            self._update_sizing_ui()
 
     def keyPressEvent(self, event):
         key = event.key()
@@ -2419,10 +2517,12 @@ class ImageManager(QMainWindow):
     def open_image_directory(self, directory_path):
         if self.open_picker_dialogs:
             self.new_picker_info = list(self.open_picker_dialogs[-1].get_picker_info())
+        sizing_mode = self.new_picker_info[4] if len(self.new_picker_info) > 4 else "slider"
         self.open_picker_dialog([self.new_picker_info[0],
                                   directory_path,
                                   self.new_picker_info[2],
-                                  self.new_picker_info[3]])
+                                  self.new_picker_info[3],
+                                  sizing_mode])
 
     def set_wp(self, path):
         try:
