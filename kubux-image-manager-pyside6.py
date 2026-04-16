@@ -1685,9 +1685,6 @@ class ImagePicker(QMainWindow):
         self.thumbnail_slider.setFixedWidth(150)
         bot_layout.addWidget(self.thumbnail_slider)
         
-        # Update button label and slider visibility based on sizing mode
-        self._update_sizing_ui()
-        
         show_label = QLabel("Show:")
         show_label.setFont(get_font(self))
         bot_layout.addWidget(show_label)
@@ -1721,6 +1718,9 @@ class ImagePicker(QMainWindow):
         self.background_worker.run(self.image_dir, self.thumbnail_width)
         self.breadcrumb_nav.set_path(self.image_dir)
         self._gallery_grid.regrid()
+        
+        # Update button label and slider visibility based on sizing mode
+        self._update_sizing_ui()
         
         # Bind drop handlers for drag-and-drop to this picker
         bind_drop(self._gallery_scroll, self._handle_drop)
