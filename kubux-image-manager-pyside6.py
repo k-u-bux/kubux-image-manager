@@ -1257,16 +1257,12 @@ class DirectoryThumbnailGrid(QWidget):
     def _calculate_columns(self, frame_width):
         if frame_width <= 0:
             return 1
-        spacing = self._layout.spacing()  # Get the actual spacing (4px)
-        border_width = self._item_border_width
-        button_width = self._item_width + (2 * border_width)
-        buffer = 10
-        available = frame_width - buffer
-        if available <= 0:
+        item_total_occupancy_width = self._item_width + (2 * self._item_border_width)
+        buffer_for_gutters_and_edges = 10
+        available_width_for_items = frame_width - buffer_for_gutters_and_edges
+        if available_width_for_items <= 0:
             return 1
-        # Formula: available = n_cols * button_width + (n_cols - 1) * spacing
-        # Rearranged: n_cols = (available + spacing) / (button_width + spacing)
-        calculated_cols = max(1, (available + spacing) // (button_width + spacing))
+        calculated_cols = max(1, available_width_for_items // item_total_occupancy_width)
         return calculated_cols
 
     def _layout_the_grid(self):
@@ -1541,7 +1537,7 @@ class ImagePicker(QMainWindow):
         self.image_dir = picker_info[1]
         self.list_cmd = picker_info[2]
         self.window_geometry = picker_info[3]
-        self.sizing_mode = picker_info[4] if len(picker_info) > 4 else "slider"
+        self.sizing_mode = picker_info[4]
         self.background_worker = BackgroundWorker(self.image_dir, self.thumbnail_width)
         self.update_thumbnail_job_id = None
         self.watcher = DirectoryWatcher(self)
@@ -1939,12 +1935,13 @@ class ImagePicker(QMainWindow):
         """Compute thumbnail width to fit target_cols columns in current window."""
         window_width = self._gallery_scroll.viewport().width()
         border_width = 6
-        spacing = 4
         buffer = 10
         available = window_width - buffer
-        # Formula: available = target_cols * (thumb_width + 2*border) + (target_cols - 1) * spacing
-        # Solve for thumb_width
-        thumb_width = (available - (target_cols - 1) * spacing) / target_cols - (2 * border_width)
+        # Simple division matching _calculate_columns logic:
+        # available = n_cols * (thumb_width + 2*border)
+        # thumb_width = available / n_cols - 2*border
+        button_width = available / target_cols
+        thumb_width = button_width - (2 * border_width)
         return max(96, int(thumb_width))
 
     def _get_current_column_count(self):
@@ -2248,7 +2245,7 @@ class ImageManager(QMainWindow):
         self.commands = self.app_settings.get("commands", "Open: {*}\nSetWP: *\nOpen: ${HOME}/Pictures")
         self.current_index = int(self.app_settings.get("current_index", 1))
         self.selected_files = self.app_settings.get("selected_files", [])
-        self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None])
+        self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider"])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
         self.open_image_info = self.app_settings.get("open_image_info", [])
         self.list_commands = self.app_settings.get("list_commands", ["ls", "find . -maxdepth 1 -type f"])
@@ -2521,12 +2518,11 @@ class ImageManager(QMainWindow):
     def open_image_directory(self, directory_path):
         if self.open_picker_dialogs:
             self.new_picker_info = list(self.open_picker_dialogs[-1].get_picker_info())
-        sizing_mode = self.new_picker_info[4] if len(self.new_picker_info) > 4 else "slider"
         self.open_picker_dialog([self.new_picker_info[0],
                                   directory_path,
                                   self.new_picker_info[2],
                                   self.new_picker_info[3],
-                                  sizing_mode])
+                                  self.new_picker_info[4]])
 
     def set_wp(self, path):
         try:
