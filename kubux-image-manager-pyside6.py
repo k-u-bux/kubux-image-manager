@@ -30,6 +30,7 @@ import time
 import sys
 from collections import OrderedDict
 from datetime import datetime
+from math import gcd
 
 # PySide6 imports
 from PySide6.QtCore import (Qt, QSize, QPoint, QRect, QTimer, Signal, QObject, 
@@ -1327,7 +1328,7 @@ class LongMenu(QDialog):
         if y_pos < 0:
             y_pos = 0
 
-        screen = QApplication.primaryScreen().geometry()
+        screen = QApplication.primaryScreen().availableGeometry()
         if x_pos + self.width() > screen.width():
             x_pos = screen.width() - self.width() - 5
         if y_pos + self.height() > screen.height():
@@ -1616,6 +1617,8 @@ class ImagePicker(QMainWindow):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
 
+        self.available_screen_width = QGuiApplication.primaryScreen().availableGeometry().width() - 96;
+
         # Top bar
         self._top_frame = QWidget()
         top_layout = QHBoxLayout(self._top_frame)
@@ -1681,7 +1684,7 @@ class ImagePicker(QMainWindow):
         
         self.thumbnail_slider = QSlider(Qt.Horizontal)
         self.thumbnail_slider.setMinimum(96)
-        self.thumbnail_slider.setMaximum( QGuiApplication.primaryScreen().availableGeometry().width() - 96 )
+        self.thumbnail_slider.setMaximum( self.available_screen_width )
         self.thumbnail_slider.setSingleStep(20)
         self.thumbnail_slider.setValue(self.thumbnail_width)
         self.thumbnail_slider.valueChanged.connect(self._update_thumbnail_width)
@@ -1906,16 +1909,30 @@ class ImagePicker(QMainWindow):
         self._regrid()
         self._gallery_scroll.verticalScrollBar().setValue(0)
 
+    def _normalize ( self, value, the_max ):
+        rational_fractions = [ p/q for q in [1,2,3,4,5,6,7,8,9,10,12,15,16,20,24] for p in range(1, q + 1) if gcd(p, q) == 1 ]
+        
+        # Calculate actual pixel values for each fraction
+        allowed_widths = [ width for width in [ the_max * frac for frac in rational_fractions ] if width >= 96 ]
+        
+        # Find the closest allowed width
+        closest_value = min(allowed_widths, key=lambda w: abs(w - value))
+        return int( closest_value )
+        
+
     def _update_thumbnail_width(self, value):
         if self.update_thumbnail_job_id:
             self.update_thumbnail_job_id.stop()
         self.update_thumbnail_job_id = QTimer()
         self.update_thumbnail_job_id.setSingleShot(True)
+        value = self._normalize( value, self.available_screen_width )
         self.update_thumbnail_job_id.timeout.connect(lambda: self._do_update_thumbnail_width(value))
         self.update_thumbnail_job_id.start(400)
 
     def _do_update_thumbnail_width(self, value):
+        self.thumbnail_slider.blockSignals(True)
         self.thumbnail_width = value
+        self.thumbnail_slider.blockSignals(False)
         self._regrid()
         self._redraw()
 
