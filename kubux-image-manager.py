@@ -50,6 +50,7 @@ from watchdog.observers import Observer
 
 import requests
 from PIL import Image
+from concurrent.futures import ThreadPoolExecutor
 
 
 # --- configuration ---
@@ -345,6 +346,20 @@ def resize_image(image, target_width, target_height):
     new_height = max(1, new_height)
     return image.resize((new_width, new_height), resample=Image.LANCZOS)
 
+def get_thumbnail_dimensions(img_path, max_size):
+    """Quickly read image dimensions and calculate thumbnail size without loading full image."""
+    try:
+        with Image.open(img_path) as img:
+            orig_w, orig_h = img.size
+        aspect = orig_w / orig_h
+        if aspect > 1:
+            return max_size, max(1, int(max_size / aspect))
+        else:
+            return max(1, int(max_size * aspect)), max_size
+    except Exception as e:
+        log_error(f"Error reading dimensions for {img_path}: {e}")
+        return max_size, max_size  # fallback to square
+
 def uniq_file_id(img_path, width=-1):
     try:
         real_path = os.path.realpath(img_path)
@@ -429,6 +444,40 @@ def get_or_make_qt_by_key(cache_key, img_path, thumbnail_max_size):
 def get_or_make_qt(img_path, thumbnail_max_size):
     cache_key = uniq_file_id(img_path, thumbnail_max_size)
     return get_or_make_qt_by_key(cache_key, img_path, thumbnail_max_size)
+
+
+class ThumbnailLoader(QObject):
+    """Asynchronously loads thumbnails using a thread pool."""
+    thumbnail_ready = Signal(str, QPixmap)  # (cache_key, pixmap)
+    
+    def __init__(self, max_workers=4):
+        super().__init__()
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.thumbnail_ready.connect(self._update_button, Qt.QueuedConnection)
+        self.buttons = {}  # cache_key -> button
+    
+    def load_async(self, cache_key, img_path, width, button):
+        """Queue thumbnail generation for background processing."""
+        self.buttons[cache_key] = button
+        self.executor.submit(self._generate_thumbnail, cache_key, img_path, width)
+    
+    def _generate_thumbnail(self, cache_key, img_path, width):
+        """Runs on worker thread - generates thumbnail."""
+        try:
+            pixmap = get_or_make_qt_by_key(cache_key, img_path, width)
+            self.thumbnail_ready.emit(cache_key, pixmap)
+        except Exception as e:
+            log_error(f"Error generating thumbnail for {img_path}: {e}")
+    
+    def _update_button(self, cache_key, pixmap):
+        """Runs on main thread - updates button widget."""
+        if cache_key in self.buttons:
+            btn = self.buttons[cache_key]
+            btn.set_image(pixmap)
+    
+    def shutdown(self):
+        """Cleanup thread pool."""
+        self.executor.shutdown(wait=False)
 
 
 # --- dialogue box ---
@@ -1195,6 +1244,8 @@ class DirectoryThumbnailGrid(QWidget):
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(4)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        
+        self.thumbnail_loader = ThumbnailLoader()
 
     def get_width_and_height(self):
         self.updateGeometry()
@@ -1206,19 +1257,44 @@ class DirectoryThumbnailGrid(QWidget):
         self._list_cmd = list_cmd
         return self.regrid()
 
+    def _load_thumbnail_for_button(self, btn, img_path, width):
+        """Load thumbnail for button (async if not cached). Common logic for initial load and resize."""
+        cache_key = uniq_file_id(img_path, width)
+        btn.cache_key = cache_key
+        btn.img_path = img_path
+        
+        # Get thumbnail dimensions and resize button to correct size
+        thumb_w, thumb_h = get_thumbnail_dimensions(img_path, width)
+        btn.setFixedSize(thumb_w + 2 * self._item_border_width, 
+                         thumb_h + 2 * self._item_border_width)
+        
+        # Check if thumbnail exists in Qt cache already
+        if cache_key in QT_CACHE:
+            # Use cached thumbnail immediately
+            QT_CACHE.move_to_end(cache_key)
+            btn.set_image(QT_CACHE[cache_key])
+        else:
+            # Queue async thumbnail generation
+            self.thumbnail_loader.load_async(cache_key, img_path, width, btn)
+
     def _get_button(self, img_path, width, pre_cache=True):
         cache_key = uniq_file_id(img_path, width)
+        
+        # Check if button already exists in widget cache
         btn = self._widget_cache.get(cache_key, None)
         if btn is None:
-            qt_image = get_or_make_qt_by_key(cache_key, img_path, width)
+            # Create new button
             btn = ThumbnailButton(self)
-            btn.cache_key = cache_key
-            btn.set_image(qt_image)
+            
+            # Load thumbnail (async if not cached)
+            self._load_thumbnail_for_button(btn, img_path, width)
+            
             self._widget_cache[cache_key] = btn
             if self._static_button_config_callback:
                 self._static_button_config_callback(btn, img_path)
         else:
             self._widget_cache.move_to_end(cache_key)
+        
         return btn
 
     def refresh(self):
@@ -1839,11 +1915,10 @@ class ImagePicker(QMainWindow):
 
     def _dynamic_configure_picker_button(self, btn, img_path):
         cache_key = uniq_file_id(img_path, self.thumbnail_width)
-        btn.img_path = img_path
+        
+        # If thumbnail size changed, reload thumbnail asynchronously
         if btn.cache_key != cache_key:
-            btn.cache_key = cache_key
-            qt_image = get_or_make_qt_by_key(cache_key, img_path, self.thumbnail_width)
-            btn.set_image(qt_image)
+            self._gallery_grid._load_thumbnail_for_button(btn, img_path, self.thumbnail_width)
         
         # Only setup drag handlers once (check if already connected via attribute)
         if not hasattr(btn, '_drag_connected'):
@@ -1864,6 +1939,7 @@ class ImagePicker(QMainWindow):
         self.background_worker.stop()
         self.watcher.stop_watching()
         self._cache_timer.stop()
+        self._gallery_grid.thumbnail_loader.shutdown()
         self.master.open_picker_dialogs.remove(self)
         self.close()
 
