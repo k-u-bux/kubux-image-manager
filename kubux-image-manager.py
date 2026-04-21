@@ -330,10 +330,10 @@ class DirectoryWatcher():
 
 # --- image stuff / caching ---
 
-def resize_image(image, target_width, target_height):
-    original_width, original_height = image.size
+def calculate_thumbnail_dimensions(original_width, original_height, target_width, target_height):
+    """Calculate thumbnail dimensions using consistent aspect-preserving logic."""
     if target_width <= 0 or target_height <= 0:
-        return image.copy()
+        return original_width, original_height
     target_aspect = target_width / target_height
     image_aspect = original_width / original_height
     if image_aspect > target_aspect:
@@ -344,6 +344,13 @@ def resize_image(image, target_width, target_height):
         new_width = int(target_height * image_aspect)
     new_width = max(1, new_width)
     new_height = max(1, new_height)
+    return new_width, new_height
+
+def resize_image(image, target_width, target_height):
+    original_width, original_height = image.size
+    new_width, new_height = calculate_thumbnail_dimensions(original_width, original_height, target_width, target_height)
+    if new_width == original_width and new_height == original_height:
+        return image.copy()
     return image.resize((new_width, new_height), resample=Image.LANCZOS)
 
 def get_thumbnail_dimensions(img_path, max_size):
@@ -351,11 +358,8 @@ def get_thumbnail_dimensions(img_path, max_size):
     try:
         with Image.open(img_path) as img:
             orig_w, orig_h = img.size
-        aspect = orig_w / orig_h
-        if aspect > 1:
-            return max_size, max(1, int(max_size / aspect))
-        else:
-            return max(1, int(max_size * aspect)), max_size
+        # Use the same calculation logic as resize_image to ensure consistency
+        return calculate_thumbnail_dimensions(orig_w, orig_h, max_size, max_size)
     except Exception as e:
         log_error(f"Error reading dimensions for {img_path}: {e}")
         return max_size, max_size  # fallback to square
@@ -1203,7 +1207,7 @@ class ImageViewer(QMainWindow):
 
 
 class ThumbnailButton(QPushButton):
-    BORDER_WIDTH = 3
+    BORDER_WIDTH = 6
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1211,17 +1215,15 @@ class ThumbnailButton(QPushButton):
         self.cache_key = None
         self.qt_image = None
         self.setCursor(Qt.PointingHandCursor)
-        # Use transparent border by default so space is reserved for selection border
         self.setStyleSheet(f"padding: 0px; margin: 0px; border: {self.BORDER_WIDTH}px solid transparent;")
         
     def set_image(self, pixmap):
-        """Set the button's image and resize to fit exactly plus border space."""
+        """Set the button's image without resizing (size already set by _load_thumbnail_for_button)."""
         self.qt_image = pixmap
         self.setIcon(QIcon(pixmap))
-        self.setIconSize(pixmap.size())
-        # Set fixed size to match the pixmap plus border on each side
-        self.setFixedSize(pixmap.width() + 2 * self.BORDER_WIDTH, 
-                         pixmap.height() + 2 * self.BORDER_WIDTH)
+        icon_size = QSize(self.width() - 2 * self.BORDER_WIDTH, 
+                         self.height() - 2 * self.BORDER_WIDTH)
+        self.setIconSize(icon_size)
 
 
 class DirectoryThumbnailGrid(QWidget):
@@ -1353,11 +1355,16 @@ class DirectoryThumbnailGrid(QWidget):
             if widget is None:
                 continue
             row, col_idx = divmod(i, desired_content_cols)
+
             widget.show()
             self._layout.addWidget(widget, row, col_idx, Qt.AlignCenter)
 
+
         while len(self._widget_cache) > self._cache_size:
             self._widget_cache.popitem(last=False)
+
+        # DEBUG
+        print(f"Grid total height: {self.height()}, sizeHint: {self.sizeHint().height()}")
 
         return self.get_width_and_height()
 
@@ -1744,6 +1751,7 @@ class ImagePicker(QMainWindow):
         self._canvas_frame = QWidget()
         canvas_layout = QHBoxLayout(self._canvas_frame)
         canvas_layout.setContentsMargins(0, 0, 0, 0)
+
         
         self._gallery_scroll = QScrollArea()
         self._gallery_scroll.setWidgetResizable(True)
@@ -1763,6 +1771,9 @@ class ImagePicker(QMainWindow):
         canvas_layout.addWidget(self._gallery_scroll)
         
         main_layout.addWidget(self._canvas_frame, 1)
+
+        #DEBUG
+        print(f"Viewport height: {self._gallery_scroll.viewport().height()}")
 
         # Bottom bar
         self._bot_frame = QWidget()
