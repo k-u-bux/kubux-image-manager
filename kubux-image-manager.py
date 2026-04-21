@@ -329,19 +329,6 @@ class DirectoryWatcher():
 
 # --- image stuff / caching ---
 
-rational_fractions = sorted( [ p/q for q in [1,2,3,4,5,6,7,8,9,10,12,15,16,20,24] for p in range(1, q + 1) if gcd(p, q) == 1 ] )
-screen_width = QApplication().primaryScreen().availableGeometry().width()
-thumbnail_sizes = [ int( q * ( screen_width - 48 ) ) for q in rational_fractions ]
-
-
-def snap_thumbnail_width ( width ):
-    return ( min( thumbnail_sizes, key = lambda x: abs( x - width ) ) )
-
-
-def floor_thumbnail_width ( width ):
-    return ( max( [ w for w in thumbnail_sizes if w <= width ] ) )
-
-
 def resize_image(image, target_width, target_height):
     original_width, original_height = image.size
     if target_width <= 0 or target_height <= 0:
@@ -1569,6 +1556,22 @@ class ImagePicker(QMainWindow):
         self._cache_timer.timeout.connect(self._cache_widget)
         self._cache_timer.start(50)
 
+        self.rational_fractions = sorted( [ p/q for q in [1,2,3,4,5,6,7,8,9,10,12,15,20,24] for p in range(1, q + 1) if gcd(p, q) == 1 ] )
+
+
+    def admissible_thumbnail_sizes (self):
+        screen_width = QGuiApplication.primaryScreen().availableGeometry().width()
+        return [ int( q * ( screen_width - 48 ) ) for q in self.rational_fractions ]
+
+
+    def snap_thumbnail_width ( self, width ):
+        return ( min( self.admissible_thumbnail_sizes(), key = lambda x: abs( x - width ) ) )
+
+
+    def floor_thumbnail_width ( self, width ):
+        return ( max( [ w for w in self.admissible_thumbnail_sizes() if w <= width ] ) )
+
+
     def _cache_widget(self):
         try:
             path_name = self.background_worker.path_name_queue.get_nowait()
@@ -1922,21 +1925,13 @@ class ImagePicker(QMainWindow):
         self._regrid()
         self._gallery_scroll.verticalScrollBar().setValue(0)
 
-    def _normalize ( self, value, the_max ):
-       # Calculate actual pixel values for each fraction
-        allowed_widths = [ width for width in [ the_max * frac for frac in rational_fractions ] if width >= 96 ]
-        
-        # Find the closest allowed width
-        closest_value = min(allowed_widths, key=lambda w: abs(w - value))
-        return int( closest_value )
-        
 
     def _update_thumbnail_width(self, value):
         if self.update_thumbnail_job_id:
             self.update_thumbnail_job_id.stop()
         self.update_thumbnail_job_id = QTimer()
         self.update_thumbnail_job_id.setSingleShot(True)
-        value = self._normalize( value, self.available_screen_width )
+        value = self.snap_thumbnail_width( value )
         self.update_thumbnail_job_id.timeout.connect(lambda: self._do_update_thumbnail_width(value))
         self.update_thumbnail_job_id.start(400)
 
@@ -1969,7 +1964,7 @@ class ImagePicker(QMainWindow):
         # Formula: available = target_cols * (thumb_width + 2*border) + (target_cols - 1) * spacing
         # Solve for thumb_width
         thumb_width = (available - (target_cols - 1) * spacing) / target_cols - (2 * border_width)
-        return max(96, int(thumb_width))
+        return max(96, self.floor_thumbnail_width(thumb_width))
 
     def _get_current_column_count(self):
         """Get the actual number of columns currently being displayed."""
