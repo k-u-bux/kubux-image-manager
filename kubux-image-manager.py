@@ -329,6 +329,19 @@ class DirectoryWatcher():
 
 # --- image stuff / caching ---
 
+rational_fractions = sorted( [ p/q for q in [1,2,3,4,5,6,7,8,9,10,12,15,16,20,24] for p in range(1, q + 1) if gcd(p, q) == 1 ] )
+screen_width = QApplication().primaryScreen().availableGeometry().width()
+thumbnail_sizes = [ int( q * ( screen_width - 48 ) ) for q in rational_fractions ]
+
+
+def snap_thumbnail_width ( width ):
+    return ( min( thumbnail_sizes, key = lambda x: abs( x - width ) ) )
+
+
+def floor_thumbnail_width ( width ):
+    return ( max( [ w for w in thumbnail_sizes if w <= width ] ) )
+
+
 def resize_image(image, target_width, target_height):
     original_width, original_height = image.size
     if target_width <= 0 or target_height <= 0:
@@ -1910,9 +1923,7 @@ class ImagePicker(QMainWindow):
         self._gallery_scroll.verticalScrollBar().setValue(0)
 
     def _normalize ( self, value, the_max ):
-        rational_fractions = [ p/q for q in [1,2,3,4,5,6,7,8,9,10,12,15,16,20,24] for p in range(1, q + 1) if gcd(p, q) == 1 ]
-        
-        # Calculate actual pixel values for each fraction
+       # Calculate actual pixel values for each fraction
         allowed_widths = [ width for width in [ the_max * frac for frac in rational_fractions ] if width >= 96 ]
         
         # Find the closest allowed width
