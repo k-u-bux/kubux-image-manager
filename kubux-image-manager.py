@@ -1369,9 +1369,6 @@ class DirectoryThumbnailGrid(QWidget):
         while len(self._widget_cache) > self._cache_size:
             self._widget_cache.popitem(last=False)
 
-        # DEBUG
-        print(f"Grid total height: {self.height()}, sizeHint: {self.sizeHint().height()}")
-
         return self.get_width_and_height()
 
 
