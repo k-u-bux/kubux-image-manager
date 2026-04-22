@@ -330,6 +330,27 @@ class DirectoryWatcher():
 
 # --- image stuff / caching ---
 
+MIN_THUMBNAIL_SIZE = 96
+ITEM_BORDER_WIDTH = 3
+SPACING = 3
+PADDING = 6
+
+def num_columns(frame_width, item_width, item_border_width, lr_padding, spacing):
+    if frame_width <= 0:
+        return 1
+    item_total_occupancy_width = item_width + ( 2 * item_border_width ) + spacing
+    available_width_for_items = frame_width - 2 * lr_padding
+    if available_width_for_items <= 0:
+        return 1
+    calculated_cols = max(1, available_width_for_items // item_total_occupancy_width)
+    return calculated_cols
+
+def width_from_n_cols(n_cols, frame_width, item_border_width, lr_padding, spacing):
+    chunk_width = ( frame_width - 2 * lr_padding ) / n_cols
+    icon_width = chunk_width - ( 2 * item_border_width ) - spacing
+    return int( icon_width )
+
+
 def calculate_thumbnail_dimensions(original_width, original_height, target_width, target_height):
     """Calculate thumbnail dimensions using consistent aspect-preserving logic."""
     if target_width <= 0 or target_height <= 0:
@@ -1207,22 +1228,21 @@ class ImageViewer(QMainWindow):
 
 
 class ThumbnailButton(QPushButton):
-    BORDER_WIDTH = 6
-    
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, item_border_width = 6):
         super().__init__(parent)
         self.img_path = None
+        self.item_border_width = item_border_width
         self.cache_key = None
         self.qt_image = None
         self.setCursor(Qt.PointingHandCursor)
-        self.setStyleSheet(f"padding: 0px; margin: 0px; border: {self.BORDER_WIDTH}px solid transparent;")
+        self.setStyleSheet(f"padding: 0px; margin: 0px; border: {self.item_border_width}px solid transparent;")
         
     def set_image(self, pixmap):
         """Set the button's image without resizing (size already set by _load_thumbnail_for_button)."""
         self.qt_image = pixmap
         self.setIcon(QIcon(pixmap))
-        icon_size = QSize(self.width() - 2 * self.BORDER_WIDTH, 
-                         self.height() - 2 * self.BORDER_WIDTH)
+        icon_size = QSize(self.width() - 2 * self.item_border_width, 
+                         self.height() - 2 * self.item_border_width)
         self.setIconSize(icon_size)
 
 
@@ -1243,8 +1263,9 @@ class DirectoryThumbnailGrid(QWidget):
         self._files = []
 
         self._layout = QGridLayout(self)
-        self._layout.setContentsMargins(0, 0, 0, 0)
-        self._layout.setSpacing(4)
+        self._layout.setContentsMargins(PADDING, PADDING, PADDING, PADDING)
+        self._spacing = SPACING
+        self._layout.setSpacing( self._spacing )
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         
         self.thumbnail_loader = ThumbnailLoader()
@@ -1292,7 +1313,7 @@ class DirectoryThumbnailGrid(QWidget):
         btn = self._widget_cache.get(cache_key, None)
         if btn is None:
             # Create new button
-            btn = ThumbnailButton(self)
+            btn = ThumbnailButton(self, self._item_border_width)
             
             # Load thumbnail (async if not cached)
             self._load_thumbnail_for_button(btn, img_path, width)
@@ -1340,15 +1361,7 @@ class DirectoryThumbnailGrid(QWidget):
         self._layout_the_grid()
 
     def _calculate_columns(self, frame_width):
-        if frame_width <= 0:
-            return 1
-        item_total_occupancy_width = self._item_width + (2 * self._item_border_width)
-        buffer_for_gutters_and_edges = 10
-        available_width_for_items = frame_width - buffer_for_gutters_and_edges
-        if available_width_for_items <= 0:
-            return 1
-        calculated_cols = max(1, available_width_for_items // item_total_occupancy_width)
-        return calculated_cols
+        return num_columns( frame_width, self._item_width, self._item_border_width, PADDING, self._spacing )
 
     def _layout_the_grid(self):
         parent_width = self.parent().width() if self.parent() else self.width()
@@ -1655,7 +1668,9 @@ class ImagePicker(QMainWindow):
 
 
     def floor_thumbnail_width ( self, width ):
-        return ( max( [ w for w in self.admissible_thumbnail_sizes() if w <= width ] ) )
+        width = max( width, min( self.admissible_thumbnail_sizes() ) )
+        possible = [ w for w in self.admissible_thumbnail_sizes() if w <= width ]
+        return ( max( possible ) );
 
 
     def _cache_widget(self):
@@ -1719,7 +1734,7 @@ class ImagePicker(QMainWindow):
         main_layout.setContentsMargins(5, 5, 5, 5)
         main_layout.setSpacing(5)
 
-        self.available_screen_width = QGuiApplication.primaryScreen().availableGeometry().width() - 96;
+        self.available_screen_width = QGuiApplication.primaryScreen().availableGeometry().width() - MIN_THUMBNAIL_SIZE;
 
         # Top bar
         self._top_frame = QWidget()
@@ -1759,14 +1774,14 @@ class ImagePicker(QMainWindow):
         self._gallery_scroll = QScrollArea()
         self._gallery_scroll.setWidgetResizable(True)
         self._gallery_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._gallery_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self._gallery_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         
         self._gallery_grid = DirectoryThumbnailGrid(
             self._gallery_scroll,
             directory_path=self.image_dir,
             list_cmd=self.list_cmd,
             item_width=self.thumbnail_width,
-            item_border_width=6,
+            item_border_width=ITEM_BORDER_WIDTH,
             static_button_config_callback=self._static_configure_picker_button,
             dynamic_button_config_callback=self._dynamic_configure_picker_button
         )
@@ -1789,7 +1804,7 @@ class ImagePicker(QMainWindow):
         bot_layout.addWidget(self.size_menu_button)
         
         self.thumbnail_slider = QSlider(Qt.Horizontal)
-        self.thumbnail_slider.setMinimum(96)
+        self.thumbnail_slider.setMinimum(MIN_THUMBNAIL_SIZE)
         self.thumbnail_slider.setMaximum( self.available_screen_width )
         self.thumbnail_slider.setSingleStep(20)
         self.thumbnail_slider.setValue(self.thumbnail_width)
@@ -1942,9 +1957,9 @@ class ImagePicker(QMainWindow):
             btn._drag_connected = True
         
         if img_path in self.master.selected_files:
-            btn.setStyleSheet(f"padding: 0px; margin: 0px; border: {ThumbnailButton.BORDER_WIDTH}px solid blue;")
+            btn.setStyleSheet(f"padding: 0px; margin: 0px; border: {btn.item_border_width}px solid blue;")
         else:
-            btn.setStyleSheet(f"padding: 0px; margin: 0px; border: {ThumbnailButton.BORDER_WIDTH}px solid transparent;")
+            btn.setStyleSheet(f"padding: 0px; margin: 0px; border: {btn.item_border_width}px solid transparent;")
 
     def _toggle_selection_btn(self, btn):
         self.master.toggle_selection(btn.img_path)
@@ -2035,26 +2050,14 @@ class ImagePicker(QMainWindow):
     def _get_max_possible_columns(self):
         """Calculate the maximum number of columns that can fit given minimum thumbnail size of 96px."""
         window_width = self._gallery_scroll.viewport().width()
-        MIN_THUMB_SIZE = 96
-        border_width = 6
-        spacing = 4
-        # Account for borders, spacing, and buffer
-        available = window_width - 10
-        item_width = MIN_THUMB_SIZE + (2 * border_width)
-        max_cols = max(1, (available + spacing) // (item_width + spacing))
-        return max_cols
+        return num_columns( window_width, MIN_THUMBNAIL_SIZE, ITEM_BORDER_WIDTH, PADDING, SPACING )
 
     def _compute_width_for_columns(self, target_cols):
         """Compute thumbnail width to fit target_cols columns in current window."""
         window_width = self._gallery_scroll.viewport().width()
-        border_width = 6
-        spacing = 4
-        buffer = 10
-        available = window_width - buffer
-        # Formula: available = target_cols * (thumb_width + 2*border) + (target_cols - 1) * spacing
-        # Solve for thumb_width
-        thumb_width = (available - (target_cols - 1) * spacing) / target_cols - (2 * border_width)
-        return max(96, self.floor_thumbnail_width(thumb_width))
+        chunk_width = width_from_n_cols( target_cols, window_width, ITEM_BORDER_WIDTH, PADDING, SPACING )
+        print( f"chunk_width = {chunk_width}, window_width = {window_width}" )
+        return ( max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( chunk_width ) ) )
 
     def _get_current_column_count(self):
         """Get the actual number of columns currently being displayed."""
