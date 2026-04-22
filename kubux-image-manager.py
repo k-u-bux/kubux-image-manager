@@ -1258,6 +1258,12 @@ class DirectoryThumbnailGrid(QWidget):
         self._item_width = width
         self._list_cmd = list_cmd
         return self.regrid()
+    
+    def _recreate_thumbnail_loader(self):
+        """Shutdown and recreate thumbnail loader to cancel stale tasks."""
+        if hasattr(self, 'thumbnail_loader'):
+            self.thumbnail_loader.shutdown()
+        self.thumbnail_loader = ThumbnailLoader()
 
     def _load_thumbnail_for_button(self, btn, img_path, width):
         """Load thumbnail for button (async if not cached). Common logic for initial load and resize."""
