@@ -2056,7 +2056,6 @@ class ImagePicker(QMainWindow):
         """Compute thumbnail width to fit target_cols columns in current window."""
         window_width = self._gallery_scroll.viewport().width()
         chunk_width = width_from_n_cols( target_cols, window_width, ITEM_BORDER_WIDTH, PADDING, SPACING )
-        print( f"chunk_width = {chunk_width}, window_width = {window_width}" )
         return ( max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( chunk_width ) ) )
 
     def _get_current_column_count(self):
