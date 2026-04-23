@@ -1773,7 +1773,7 @@ class ImagePicker(QMainWindow):
         
         self._gallery_scroll = QScrollArea()
         self._gallery_scroll.setWidgetResizable(True)
-        self._gallery_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._gallery_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self._gallery_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         
         self._gallery_grid = DirectoryThumbnailGrid(
