@@ -500,6 +500,25 @@ class ThumbnailLoader(QObject):
             btn = self.buttons[cache_key]
             btn.set_image(pixmap)
     
+    def load_thumbnail_for_button(self, btn, img_path, width, border):
+        """Load thumbnail for button (async if not cached). Common logic for initial load and resize."""
+        cache_key = uniq_file_id( img_path, width )
+        btn.cache_key = cache_key
+        btn.img_path = img_path
+        
+        # Get thumbnail dimensions and resize button to correct size
+        thumb_w, thumb_h = get_thumbnail_dimensions( img_path, width )
+        btn.setFixedSize( thumb_w + 2 * border, thumb_h + 2 * border )
+        
+        # Check if thumbnail exists in Qt cache already
+        if cache_key in QT_CACHE:
+            # Use cached thumbnail immediately
+            QT_CACHE.move_to_end(cache_key)
+            btn.set_image(QT_CACHE[cache_key])
+        else:
+            # Queue async thumbnail generation
+            self.load_async( cache_key, img_path, width, btn )
+
     def shutdown(self):
         """Cleanup thread pool."""
         self.executor.shutdown(wait=False)
@@ -1286,26 +1305,6 @@ class DirectoryThumbnailGrid(QWidget):
             self.thumbnail_loader.shutdown()
         self.thumbnail_loader = ThumbnailLoader()
 
-    def load_thumbnail_for_button(self, btn, img_path, width):
-        """Load thumbnail for button (async if not cached). Common logic for initial load and resize."""
-        cache_key = uniq_file_id(img_path, width)
-        btn.cache_key = cache_key
-        btn.img_path = img_path
-        
-        # Get thumbnail dimensions and resize button to correct size
-        thumb_w, thumb_h = get_thumbnail_dimensions(img_path, width)
-        btn.setFixedSize(thumb_w + 2 * self._item_border_width, 
-                         thumb_h + 2 * self._item_border_width)
-        
-        # Check if thumbnail exists in Qt cache already
-        if cache_key in QT_CACHE:
-            # Use cached thumbnail immediately
-            QT_CACHE.move_to_end(cache_key)
-            btn.set_image(QT_CACHE[cache_key])
-        else:
-            # Queue async thumbnail generation
-            self.thumbnail_loader.load_async(cache_key, img_path, width, btn)
-
     def get_button(self, img_path, width, pre_cache=True):
         cache_key = uniq_file_id(img_path, width)
         
@@ -1316,7 +1315,7 @@ class DirectoryThumbnailGrid(QWidget):
             btn = ThumbnailButton(self, self._item_border_width)
             
             # Load thumbnail (async if not cached)
-            self.load_thumbnail_for_button(btn, img_path, width)
+            self.thumbnail_loader.load_thumbnail_for_button( btn, img_path, width, self._item_border_width )
             
             self._widget_cache[cache_key] = btn
             if self._static_button_config_callback:
@@ -1410,7 +1409,7 @@ class ThumbnailArea(QScrollArea):
         return self.grid.set_size_path_and_command( width, path, list_cmd )
 
     def load_thumbnail_for_button ( self, btn, img_path, width ):
-        self.grid.load_thumbnail_for_button( btn, img_path, width )
+        self.grid.thumbnail_loader.load_thumbnail_for_button( btn, img_path, width, self.grid._item_border_width )
 
     def redraw (self):
         self.grid.redraw()
@@ -2012,7 +2011,7 @@ class ImagePicker(QMainWindow):
         self.background_worker.stop()
         self.watcher.stop_watching()
         self._cache_timer.stop()
-        self._gallery_grid.thumbnail_loader.shutdown()
+        self._gallery_grid.shutdown()
         self.master.open_picker_dialogs.remove(self)
         self.close()
 
