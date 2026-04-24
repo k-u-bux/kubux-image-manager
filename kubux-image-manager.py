@@ -1238,7 +1238,7 @@ class ThumbnailButton(QPushButton):
         self.setStyleSheet(f"padding: 0px; margin: 0px; border: {self.item_border_width}px solid transparent;")
         
     def set_image(self, pixmap):
-        """Set the button's image without resizing (size already set by _load_thumbnail_for_button)."""
+        """Set the button's image without resizing (size already set by load_thumbnail_for_button)."""
         self.qt_image = pixmap
         self.setIcon(QIcon(pixmap))
         icon_size = QSize(self.width() - 2 * self.item_border_width, 
@@ -1286,7 +1286,7 @@ class DirectoryThumbnailGrid(QWidget):
             self.thumbnail_loader.shutdown()
         self.thumbnail_loader = ThumbnailLoader()
 
-    def _load_thumbnail_for_button(self, btn, img_path, width):
+    def load_thumbnail_for_button(self, btn, img_path, width):
         """Load thumbnail for button (async if not cached). Common logic for initial load and resize."""
         cache_key = uniq_file_id(img_path, width)
         btn.cache_key = cache_key
@@ -1306,7 +1306,7 @@ class DirectoryThumbnailGrid(QWidget):
             # Queue async thumbnail generation
             self.thumbnail_loader.load_async(cache_key, img_path, width, btn)
 
-    def _get_button(self, img_path, width, pre_cache=True):
+    def get_button(self, img_path, width, pre_cache=True):
         cache_key = uniq_file_id(img_path, width)
         
         # Check if button already exists in widget cache
@@ -1316,7 +1316,7 @@ class DirectoryThumbnailGrid(QWidget):
             btn = ThumbnailButton(self, self._item_border_width)
             
             # Load thumbnail (async if not cached)
-            self._load_thumbnail_for_button(btn, img_path, width)
+            self.load_thumbnail_for_button(btn, img_path, width)
             
             self._widget_cache[cache_key] = btn
             if self._static_button_config_callback:
@@ -1346,7 +1346,7 @@ class DirectoryThumbnailGrid(QWidget):
                 btn.hide()
         self._active_widgets = {}
         for img_path in self._files:
-            btn = self._get_button(img_path, self._item_width, pre_cache=False)
+            btn = self.get_button(img_path, self._item_width, pre_cache=False)
             if self._dynamic_button_config_callback:
                 self._dynamic_button_config_callback(btn, img_path)
             self._active_widgets[img_path] = btn
@@ -1383,6 +1383,60 @@ class DirectoryThumbnailGrid(QWidget):
             self._widget_cache.popitem(last=False)
 
         return self.get_width_and_height()
+
+
+class ThumbnailArea(QScrollArea):
+    def __init__(self, master=None, directory_path="", list_cmd="ls", item_width=None, item_border_width=None,
+                 static_button_config_callback=None, dynamic_button_config_callback=None, **kwargs):
+        super().__init__(master)
+        self.setWidgetResizable(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.grid = DirectoryThumbnailGrid(
+            self,
+            directory_path=directory_path,
+            list_cmd=list_cmd,
+            item_width=item_width,
+            item_border_width=item_border_width,
+            static_button_config_callback=static_button_config_callback,
+            dynamic_button_config_callback=dynamic_button_config_callback
+        )
+        self.setWidget(self.grid)
+
+    def get_button ( self, img_path, width, pre_cache = True ):
+        return self.grid.get_button( img_path, width, pre_cache )
+
+    def set_size_path_and_command ( self, width, path, list_cmd ):
+        return self.grid.set_size_path_and_command( width, path, list_cmd )
+
+    def load_thumbnail_for_button ( self, btn, img_path, width ):
+        self.grid.load_thumbnail_for_button( btn, img_path, width )
+
+    def redraw (self):
+        self.grid.redraw()
+
+    def refresh (self):
+        self.grid.refresh()
+
+    def regrid (self):
+        self.grid.regrid()
+
+    def get_max_possible_columns(self):
+        """Calculate the maximum number of columns that can fit given minimum thumbnail size of 96px."""
+        window_width = self.viewport().width()
+        return num_columns( window_width, MIN_THUMBNAIL_SIZE, ITEM_BORDER_WIDTH, PADDING, SPACING )
+
+    def compute_width_for_columns(self, target_cols):
+        """Compute thumbnail width to fit target_cols columns in current window."""
+        window_width = self.viewport().width()
+        chunk_width = width_from_n_cols( target_cols, window_width, ITEM_BORDER_WIDTH, PADDING, SPACING )
+        return chunk_width
+        return ( max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( chunk_width ) ) )
+
+    def get_current_column_count(self):
+        """Get the actual number of columns currently being displayed."""
+        parent_width = self.viewport().width()
+        return self.grid._calculate_columns(parent_width)
 
 
 class LongMenu(QDialog):
@@ -1676,7 +1730,7 @@ class ImagePicker(QMainWindow):
     def _cache_widget(self):
         try:
             path_name = self.background_worker.path_name_queue.get_nowait()
-            self._gallery_grid._get_button(path_name, self.thumbnail_width)
+            self._gallery_grid.get_button(path_name, self.thumbnail_width)
         except queue.Empty:
             pass
 
@@ -1770,14 +1824,7 @@ class ImagePicker(QMainWindow):
         canvas_layout = QHBoxLayout(self._canvas_frame)
         canvas_layout.setContentsMargins(0, 0, 0, 0)
 
-        
-        self._gallery_scroll = QScrollArea()
-        self._gallery_scroll.setWidgetResizable(True)
-        self._gallery_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self._gallery_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        
-        self._gallery_grid = DirectoryThumbnailGrid(
-            self._gallery_scroll,
+        self._gallery_grid = ThumbnailArea(
             directory_path=self.image_dir,
             list_cmd=self.list_cmd,
             item_width=self.thumbnail_width,
@@ -1785,13 +1832,12 @@ class ImagePicker(QMainWindow):
             static_button_config_callback=self._static_configure_picker_button,
             dynamic_button_config_callback=self._dynamic_configure_picker_button
         )
-        self._gallery_scroll.setWidget(self._gallery_grid)
-        canvas_layout.addWidget(self._gallery_scroll)
+        canvas_layout.addWidget(self._gallery_grid)
         
         main_layout.addWidget(self._canvas_frame, 1)
 
         #DEBUG
-        print(f"Viewport height: {self._gallery_scroll.viewport().height()}")
+        print(f"Viewport height: {self._gallery_grid.viewport().height()}")
 
         # Bottom bar
         self._bot_frame = QWidget()
@@ -1841,16 +1887,16 @@ class ImagePicker(QMainWindow):
         main_layout.addWidget(self._bot_frame)
 
         self.watcher.start_watching(self.image_dir)
-        self._gallery_scroll.verticalScrollBar().setValue(0)
+        self._gallery_grid.verticalScrollBar().setValue(0)
         self.background_worker.run(self.image_dir, self.thumbnail_width)
         self.breadcrumb_nav.set_path(self.image_dir)
         self._gallery_grid.regrid()
         
         # Bind drop handlers for drag-and-drop to this picker
-        bind_drop(self._gallery_scroll, self._handle_drop)
-        bind_right_drop(self._gallery_scroll, self._handle_right_drop)
         bind_drop(self._gallery_grid, self._handle_drop)
         bind_right_drop(self._gallery_grid, self._handle_right_drop)
+        # bind_drop(self._gallery_grid, self._handle_drop)
+        # bind_right_drop(self._gallery_grid, self._handle_right_drop)
         
         QTimer.singleShot(100, self.activateWindow)
         self.show()
@@ -1947,7 +1993,7 @@ class ImagePicker(QMainWindow):
         
         # If thumbnail size changed, reload thumbnail asynchronously
         if btn.cache_key != cache_key:
-            self._gallery_grid._load_thumbnail_for_button(btn, img_path, self.thumbnail_width)
+            self._gallery_grid.load_thumbnail_for_button(btn, img_path, self.thumbnail_width)
         
         # Only setup drag handlers once (check if already connected via attribute)
         if not hasattr(btn, '_drag_connected'):
@@ -2028,7 +2074,7 @@ class ImagePicker(QMainWindow):
         self.background_worker.run(path, self.thumbnail_width)
         self.breadcrumb_nav.set_path(path)
         self._regrid()
-        self._gallery_scroll.verticalScrollBar().setValue(0)
+        self._gallery_grid.verticalScrollBar().setValue(0)
 
 
     def _update_thumbnail_width(self, value):
@@ -2047,25 +2093,9 @@ class ImagePicker(QMainWindow):
         self._regrid()
         self._redraw()
 
-    def _get_max_possible_columns(self):
-        """Calculate the maximum number of columns that can fit given minimum thumbnail size of 96px."""
-        window_width = self._gallery_scroll.viewport().width()
-        return num_columns( window_width, MIN_THUMBNAIL_SIZE, ITEM_BORDER_WIDTH, PADDING, SPACING )
-
-    def _compute_width_for_columns(self, target_cols):
-        """Compute thumbnail width to fit target_cols columns in current window."""
-        window_width = self._gallery_scroll.viewport().width()
-        chunk_width = width_from_n_cols( target_cols, window_width, ITEM_BORDER_WIDTH, PADDING, SPACING )
-        return ( max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( chunk_width ) ) )
-
-    def _get_current_column_count(self):
-        """Get the actual number of columns currently being displayed."""
-        parent_width = self._gallery_scroll.viewport().width()
-        return self._gallery_grid._calculate_columns(parent_width)
-
     def _show_sizing_menu(self):
         """Show menu with slider and column options, greying out infeasible column counts."""
-        max_cols = self._get_max_possible_columns()
+        max_cols = self._gallery_grid.get_max_possible_columns()
         
         # Build option list
         options = ["slider"]
@@ -2104,7 +2134,9 @@ class ImagePicker(QMainWindow):
             col_count = int(selection.split()[0])
             self.sizing_mode = f"{col_count} columns"
             # Compute width for this column count
-            self._do_update_thumbnail_width( self._compute_width_for_columns(col_count) )
+            available_col_width = self._gallery_grid.compute_width_for_columns(col_count)
+            new_thumbnail_width = max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( available_col_width ) )
+            self._do_update_thumbnail_width( new_thumbnail_width )
             self._regrid()
             self._update_sizing_ui()
 
@@ -2116,7 +2148,7 @@ class ImagePicker(QMainWindow):
             self.thumbnail_slider.setVisible(True)
         else:
             # In column mode, show actual column count
-            actual_cols = self._get_current_column_count()
+            actual_cols = self._gallery_grid.get_current_column_count()
             self.size_menu_button.setText(f"{actual_cols} columns")
             self.thumbnail_slider.setVisible(False)
 
@@ -2128,7 +2160,7 @@ class ImagePicker(QMainWindow):
 
     def keyPressEvent(self, event):
         key = event.key()
-        scrollbar = self._gallery_scroll.verticalScrollBar()
+        scrollbar = self._gallery_grid.verticalScrollBar()
         if key == Qt.Key_Up:
             scrollbar.setValue(scrollbar.value() - scrollbar.singleStep())
         elif key == Qt.Key_Down:
