@@ -1266,39 +1266,29 @@ class ThumbnailButton(QPushButton):
         self.setIconSize(icon_size)
 
 
-class DirectoryThumbnailGrid(QWidget):
-    def __init__(self, master, directory_path="", list_cmd="ls", item_width=None, item_border_width=None,
-                 static_button_config_callback=None, dynamic_button_config_callback=None, **kwargs):
-        super().__init__(master)
-        self._item_border_width = item_border_width
+class DirectoryThumbnailGrid:
+    """Helper class for managing thumbnail buttons, caching, and file lists.
+    Does NOT handle layout - that's ThumbnailArea's job."""
+    
+    def __init__(self, parent_widget, directory_path="", list_cmd="ls",
+                 static_button_config_callback=None, dynamic_button_config_callback=None):
+        self._parent_widget = parent_widget
         self._directory_path = directory_path
         self._list_cmd = list_cmd
-        self._item_width = item_width
         self._static_button_config_callback = static_button_config_callback
         self._dynamic_button_config_callback = dynamic_button_config_callback
         self._widget_cache = OrderedDict()
         self._cache_size = 20
         self._active_widgets = {}
-        self._last_known_width = -1
         self._files = []
-
-        self._layout = QGridLayout(self)
-        self._layout.setContentsMargins(PADDING, PADDING, PADDING, PADDING)
-        self._spacing = SPACING
-        self._layout.setSpacing( self._spacing )
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         
         self.thumbnail_loader = ThumbnailLoader()
 
-    def get_width_and_height(self):
-        self.updateGeometry()
-        return self.sizeHint().width(), self.sizeHint().height()
-
-    def set_size_path_and_command(self, width, path, list_cmd):
+    def set_directory_path_and_command(self, path, list_cmd):
+        """Update directory and list command, refresh file list."""
         self._directory_path = path
-        self._item_width = width
         self._list_cmd = list_cmd
-        return self.regrid()
+        self.regrid()
     
     def _recreate_thumbnail_loader(self):
         """Shutdown and recreate thumbnail loader to cancel stale tasks."""
@@ -1306,17 +1296,18 @@ class DirectoryThumbnailGrid(QWidget):
             self.thumbnail_loader.shutdown()
         self.thumbnail_loader = ThumbnailLoader()
 
-    def get_button(self, img_path, width, pre_cache=True):
+    def get_button(self, img_path, width, border_width):
+        """Get or create a button for the given image path."""
         cache_key = uniq_file_id(img_path, width)
         
         # Check if button already exists in widget cache
         btn = self._widget_cache.get(cache_key, None)
         if btn is None:
-            # Create new button
-            btn = ThumbnailButton(self, self._item_border_width)
+            # Create new button parented to viewport widget
+            btn = ThumbnailButton(self._parent_widget, border_width)
             
             # Load thumbnail (async if not cached)
-            self.thumbnail_loader.load_thumbnail_for_button( btn, img_path, width, self._item_border_width )
+            self.thumbnail_loader.load_thumbnail_for_button(btn, img_path, width, border_width)
             
             self._widget_cache[cache_key] = btn
             if self._static_button_config_callback:
@@ -1324,65 +1315,23 @@ class DirectoryThumbnailGrid(QWidget):
         else:
             self._widget_cache.move_to_end(cache_key)
         
+        # Clean up old cached widgets
+        while len(self._widget_cache) > self._cache_size:
+            self._widget_cache.popitem(last=False)
+        
         return btn
 
     def refresh(self):
+        """Refresh dynamic configuration for all active widgets."""
         for img_path, btn in self._active_widgets.items():
             if self._dynamic_button_config_callback:
                 self._dynamic_button_config_callback(btn, img_path)
-        return self.get_width_and_height()
 
     def regrid(self):
+        """Reload file list from directory."""
         old_files = self._files
         self._files = list_image_files_by_command(self._directory_path, self._list_cmd)
-        if self._files == old_files:
-            return self.refresh()
-        return self.redraw()
-
-    def redraw(self):
-        for btn in self._active_widgets.values():
-            if btn is not None:
-                self._layout.removeWidget(btn)
-                btn.hide()
-        self._active_widgets = {}
-        for img_path in self._files:
-            btn = self.get_button(img_path, self._item_width, pre_cache=False)
-            if self._dynamic_button_config_callback:
-                self._dynamic_button_config_callback(btn, img_path)
-            self._active_widgets[img_path] = btn
-        return self._layout_the_grid()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        current_width = event.size().width()
-        if current_width <= 0 or current_width == self._last_known_width:
-            return
-        self._last_known_width = current_width
-        self._layout_the_grid()
-
-    def _calculate_columns(self, frame_width):
-        return num_columns( frame_width, self._item_width, self._item_border_width, PADDING, self._spacing )
-
-    def _layout_the_grid(self):
-        parent_width = self.parent().width() if self.parent() else self.width()
-        desired_content_cols = self._calculate_columns(parent_width)
-        if desired_content_cols == 0:
-            desired_content_cols = 1
-
-        for i, img_path in enumerate(self._active_widgets.keys()):
-            widget = self._active_widgets.get(img_path)
-            if widget is None:
-                continue
-            row, col_idx = divmod(i, desired_content_cols)
-
-            widget.show()
-            self._layout.addWidget(widget, row, col_idx, Qt.AlignCenter)
-
-
-        while len(self._widget_cache) > self._cache_size:
-            self._widget_cache.popitem(last=False)
-
-        return self.get_width_and_height()
+        return self._files != old_files  # Return True if files changed
 
 
 class ThumbnailArea(QAbstractScrollArea):
@@ -1396,12 +1345,16 @@ class ThumbnailArea(QAbstractScrollArea):
         self._viewport_widget = QWidget()
         self.setViewport(self._viewport_widget)
         
+        # Layout parameters (owned by ThumbnailArea)
+        self._item_width = item_width
+        self._item_border_width = item_border_width
+        self._spacing = SPACING
+        
+        # Grid helper for button management, caching, file lists
         self.grid = DirectoryThumbnailGrid(
             self._viewport_widget,
             directory_path=directory_path,
             list_cmd=list_cmd,
-            item_width=item_width,
-            item_border_width=item_border_width,
             static_button_config_callback=static_button_config_callback,
             dynamic_button_config_callback=dynamic_button_config_callback
         )
@@ -1410,66 +1363,124 @@ class ThumbnailArea(QAbstractScrollArea):
         self._visible_start_row = 0
         self._visible_end_row = 0
         self._total_rows = 0
-        self._row_height = 0
+        self._row_heights = []  # Height of each row
+        self._row_y_positions = []  # Cumulative Y position of each row
         self._buffer_rows = 2  # Extra rows to render above/below visible area
+        
+        # Caching for performance
+        self._cached_cols = 0
+        self._cached_viewport_width = 0
+        self._row_heights_valid = False
         
         # Connect scrollbar
         self.verticalScrollBar().valueChanged.connect(self._on_scroll)
         
+        # Enable mouse wheel and keyboard focus
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.viewport().setMouseTracking(True)
+    
+    def _calculate_columns(self, viewport_width):
+        """Calculate number of columns that fit in viewport."""
+        return num_columns(viewport_width, self._item_width, self._item_border_width, PADDING, self._spacing)
+    
+    def _calculate_row_heights(self, cols):
+        """Calculate height of each row based on tallest thumbnail in that row."""
+        self._row_heights = []
+        self._row_y_positions = [PADDING]  # Start with top padding
+        
+        total_files = len(self.grid._files)
+        self._total_rows = (total_files + cols - 1) // cols
+        
+        for row_idx in range(self._total_rows):
+            start_idx = row_idx * cols
+            end_idx = min(start_idx + cols, total_files)
+            
+            # Find max height in this row
+            max_thumb_height = 0
+            for file_idx in range(start_idx, end_idx):
+                img_path = self.grid._files[file_idx]
+                thumb_w, thumb_h = get_thumbnail_dimensions(img_path, self._item_width)
+                button_h = thumb_h + 2 * self._item_border_width
+                max_thumb_height = max(max_thumb_height, button_h)
+            
+            self._row_heights.append(max_thumb_height)
+            # Next row starts at: current position + row height + spacing
+            next_y = self._row_y_positions[-1] + max_thumb_height + self._spacing
+            self._row_y_positions.append(next_y)
+        
+        # Total virtual height: last row position - spacing + bottom padding
+        return self._row_y_positions[-1] - self._spacing + PADDING if self._row_heights else 2 * PADDING
+        
+    def _find_visible_rows(self, scroll_pos, viewport_height):
+        """Find which rows are visible using the row position array."""
+        if not self._row_heights or not self._row_y_positions:
+            return 0, 0
+        
+        # Find first visible row
+        visible_start_row = 0
+        for i in range(len(self._row_heights)):
+            if self._row_y_positions[i+1] > scroll_pos:
+                visible_start_row = max(0, i - self._buffer_rows)
+                break
+        
+        # Find last visible row
+        scroll_bottom = scroll_pos + viewport_height
+        visible_end_row = self._total_rows
+        for i in range(visible_start_row, len(self._row_heights)):
+            if self._row_y_positions[i] >= scroll_bottom:
+                visible_end_row = min(self._total_rows, i + self._buffer_rows)
+                break
+        
+        return visible_start_row, visible_end_row
+    
     def _update_viewport_rendering(self):
         """Update which rows are visible and render only those."""
         if not self.grid._files:
             self._total_rows = 0
-            self._row_height = 0
+            self._row_heights = []
+            self._row_y_positions = []
+            self._row_heights_valid = False
             self.verticalScrollBar().setRange(0, 0)
-            self.grid.setGeometry(0, 0, self.viewport().width(), 0)
             return
             
         # Calculate grid parameters
         viewport_width = self.viewport().width()
-        cols = self.grid._calculate_columns(viewport_width)
+        cols = self._calculate_columns(viewport_width)
         if cols == 0:
             cols = 1
-            
-        # Calculate total rows needed
-        total_files = len(self.grid._files)
-        self._total_rows = (total_files + cols - 1) // cols
         
-        # Estimate row height from first thumbnail + border + spacing
-        if self._row_height == 0 and total_files > 0:
-            first_file = self.grid._files[0]
-            thumb_w, thumb_h = get_thumbnail_dimensions(first_file, self.grid._item_width)
-            self._row_height = thumb_h + 2 * self.grid._item_border_width + self.grid._spacing + PADDING
-        
-        # Calculate virtual content height
-        virtual_height = self._total_rows * self._row_height + 2 * PADDING
+        # Only recalculate row heights if something changed
+        if not self._row_heights_valid or cols != self._cached_cols or viewport_width != self._cached_viewport_width:
+            virtual_height = self._calculate_row_heights(cols)
+            self._cached_cols = cols
+            self._cached_viewport_width = viewport_width
+            self._row_heights_valid = True
+        else:
+            # Use cached values
+            virtual_height = self._row_y_positions[-1] - self._spacing + PADDING if self._row_heights else 2 * PADDING
         
         # Calculate visible row range
         scroll_pos = self.verticalScrollBar().value()
         viewport_height = self.viewport().height()
         
-        visible_start_row = max(0, scroll_pos // self._row_height - self._buffer_rows)
-        visible_end_row = min(self._total_rows, 
-                             (scroll_pos + viewport_height) // self._row_height + 1 + self._buffer_rows)
+        visible_start_row, visible_end_row = self._find_visible_rows(scroll_pos, viewport_height)
         
         # Update scrollbar range
         max_scroll = max(0, virtual_height - viewport_height)
         self.verticalScrollBar().setRange(0, int(max_scroll))
         self.verticalScrollBar().setPageStep(viewport_height)
+        self.verticalScrollBar().setSingleStep(viewport_height // 10)
         
-        # Only re-layout if visible range changed
-        if (visible_start_row != self._visible_start_row or 
-            visible_end_row != self._visible_end_row):
-            self._visible_start_row = visible_start_row
-            self._visible_end_row = visible_end_row
-            self._layout_visible_rows(cols, scroll_pos)
+        # Always layout visible rows (visible range check happens inside _layout_visible_rows)
+        self._visible_start_row = visible_start_row
+        self._visible_end_row = visible_end_row
+        self._layout_visible_rows(cols, scroll_pos)
     
     def _layout_visible_rows(self, cols, scroll_offset):
-        """Layout only the visible rows."""
+        """Layout only the visible rows with absolute positioning."""
         # Hide all current widgets
         for btn in self.grid._active_widgets.values():
             if btn is not None:
-                self.grid._layout.removeWidget(btn)
                 btn.hide()
         
         self.grid._active_widgets = {}
@@ -1478,13 +1489,31 @@ class ThumbnailArea(QAbstractScrollArea):
         start_idx = self._visible_start_row * cols
         end_idx = min(self._visible_end_row * cols, len(self.grid._files))
         
-        # Layout visible files
+        # Calculate even distribution of extra horizontal space
+        viewport_width = self.viewport().width()
+        col_width = self._item_width + 2 * self._item_border_width
+        
+        # Calculate base spacing
+        total_item_width = cols * col_width
+        total_base_spacing = (cols - 1) * self._spacing
+        total_base_padding = 2 * PADDING
+        used_width = total_item_width + total_base_spacing + total_base_padding
+        
+        # Distribute extra space evenly across all gaps
+        extra_space = viewport_width - used_width
+        num_gaps = cols + 1  # left padding + (n-1) inter-column + right padding
+        gap_extra = extra_space / num_gaps if num_gaps > 0 else 0
+        
+        effective_padding = PADDING + gap_extra
+        effective_spacing = self._spacing + gap_extra
+        
+        # Layout visible files with absolute positioning
         for idx in range(start_idx, end_idx):
             if idx >= len(self.grid._files):
                 break
                 
             img_path = self.grid._files[idx]
-            btn = self.grid.get_button(img_path, self.grid._item_width, pre_cache=False)
+            btn = self.grid.get_button(img_path, self._item_width, self._item_border_width)
             
             if self.grid._dynamic_button_config_callback:
                 self.grid._dynamic_button_config_callback(btn, img_path)
@@ -1495,16 +1524,20 @@ class ThumbnailArea(QAbstractScrollArea):
             row = idx // cols
             col = idx % cols
             
-            # Calculate actual position relative to viewport
-            row_offset = row - self._visible_start_row
+            # Calculate absolute X position with horizontal centering and even gap distribution
+            button_width = btn.width()
+            x_centering_offset = (col_width - button_width) / 2
+            x = effective_padding + col * (col_width + effective_spacing) + x_centering_offset
             
+            # Calculate absolute Y position with vertical centering
+            row_height = self._row_heights[row]
+            button_height = btn.height()
+            y_centering_offset = (row_height - button_height) / 2
+            y = self._row_y_positions[row] - scroll_offset + y_centering_offset
+            
+            # Position button absolutely
+            btn.setGeometry(int(x), int(y), btn.width(), btn.height())
             btn.show()
-            self.grid._layout.addWidget(btn, row_offset, col, Qt.AlignCenter)
-        
-        # Position the grid widget to account for scroll offset
-        y_offset = -int(scroll_offset % self._row_height) if self._row_height > 0 else 0
-        grid_height = max(100, (self._visible_end_row - self._visible_start_row + 1) * self._row_height)
-        self.grid.setGeometry(0, y_offset, self.viewport().width(), grid_height)
     
     def _on_scroll(self, value):
         """Handle scroll events."""
@@ -1516,32 +1549,36 @@ class ThumbnailArea(QAbstractScrollArea):
         self._update_viewport_rendering()
     
     def get_button(self, img_path, width, pre_cache=True):
-        return self.grid.get_button(img_path, width, pre_cache)
+        return self.grid.get_button(img_path, width, self._item_border_width)
 
     def set_size_path_and_command(self, width, path, list_cmd):
-        result = self.grid.set_size_path_and_command(width, path, list_cmd)
-        self._row_height = 0  # Reset row height for new thumbnails
+        self._item_width = width
+        self.grid.set_directory_path_and_command(path, list_cmd)
+        self._row_heights_valid = False  # Invalidate cache - width or files changed
         self._update_viewport_rendering()
-        return result
 
     def load_thumbnail_for_button(self, btn, img_path, width):
-        self.grid.thumbnail_loader.load_thumbnail_for_button(btn, img_path, width, self.grid._item_border_width)
+        self.grid.thumbnail_loader.load_thumbnail_for_button(btn, img_path, width, self._item_border_width)
 
     def redraw(self):
-        self.grid.redraw()
-        self._row_height = 0
+        """Force full re-render of all visible thumbnails."""
+        # Hide all active widgets
+        for btn in self.grid._active_widgets.values():
+            if btn is not None:
+                btn.hide()
+        self.grid._active_widgets = {}
+        self._row_heights_valid = False  # Invalidate cache - forcing re-render
+        # Trigger full re-layout
         self._update_viewport_rendering()
 
     def refresh(self):
-        result = self.grid.refresh()
+        self.grid.refresh()
         self._update_viewport_rendering()
-        return result
 
     def regrid(self):
-        result = self.grid.regrid()
-        self._row_height = 0
+        self.grid.regrid()
+        self._row_heights_valid = False  # Invalidate cache - file list changed
         self._update_viewport_rendering()
-        return result
 
     def shutdown(self):
         """Cleanup resources."""
@@ -1562,7 +1599,7 @@ class ThumbnailArea(QAbstractScrollArea):
     def get_current_column_count(self):
         """Get the actual number of columns currently being displayed."""
         parent_width = self.viewport().width()
-        return self.grid._calculate_columns(parent_width)
+        return self._calculate_columns(parent_width)
 
 
 class LongMenu(QDialog):
