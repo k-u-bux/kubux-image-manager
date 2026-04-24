@@ -1276,7 +1276,7 @@ class DirectoryThumbnailGrid(QWidget):
         self._static_button_config_callback = static_button_config_callback
         self._dynamic_button_config_callback = dynamic_button_config_callback
         self._widget_cache = OrderedDict()
-        self._cache_size = 2000
+        self._cache_size = 20
         self._active_widgets = {}
         self._last_known_width = -1
         self._files = []
@@ -1988,11 +1988,9 @@ class ImagePicker(QMainWindow):
     def _dynamic_configure_picker_button(self, btn, img_path):
         cache_key = uniq_file_id(img_path, self.thumbnail_width)
         
-        # If thumbnail size changed, reload thumbnail asynchronously
-        # if btn.cache_key != cache_key:
-        #     self._gallery_grid.load_thumbnail_for_button(btn, img_path, self.thumbnail_width)
+        if btn.cache_key != cache_key:
+            self._gallery_grid.load_thumbnail_for_button(btn, img_path, self.thumbnail_width)
         
-        # Only setup drag handlers once (check if already connected via attribute)
         if not hasattr(btn, '_drag_connected'):
             bind_click_or_drag(btn, self._make_ghost, self._toggle_selection, self)
             bind_right_click_or_drag(btn, self._make_right_ghost, self._open_right_click_context_menu, self, 
