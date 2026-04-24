@@ -1989,8 +1989,8 @@ class ImagePicker(QMainWindow):
         cache_key = uniq_file_id(img_path, self.thumbnail_width)
         
         # If thumbnail size changed, reload thumbnail asynchronously
-        if btn.cache_key != cache_key:
-            self._gallery_grid.load_thumbnail_for_button(btn, img_path, self.thumbnail_width)
+        # if btn.cache_key != cache_key:
+        #     self._gallery_grid.load_thumbnail_for_button(btn, img_path, self.thumbnail_width)
         
         # Only setup drag handlers once (check if already connected via attribute)
         if not hasattr(btn, '_drag_connected'):
