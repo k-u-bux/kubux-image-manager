@@ -1539,6 +1539,59 @@ class ThumbnailArea(QAbstractScrollArea):
             btn.setGeometry(int(x), int(y), btn.width(), btn.height())
             btn.show()
     
+    def _get_center_file_index(self):
+        """Find which file is currently at the center of the viewport."""
+        if not self._row_heights or not self.grid._files:
+            return None
+        
+        scroll_pos = self.verticalScrollBar().value()
+        viewport_height = self.viewport().height()
+        center_y = scroll_pos + viewport_height / 2
+        
+        # Find which row is at center
+        center_row = 0
+        for i in range(len(self._row_heights)):
+            if self._row_y_positions[i+1] > center_y:
+                center_row = i
+                break
+        
+        # Get middle file in that row
+        if center_row >= self._total_rows:
+            return None
+        
+        cols = self._cached_cols if self._cached_cols > 0 else 1
+        center_file_idx = center_row * cols + cols // 2
+        
+        if center_file_idx >= len(self.grid._files):
+            center_file_idx = len(self.grid._files) - 1
+        
+        return center_file_idx
+    
+    def _scroll_to_center_file(self, file_idx):
+        """Scroll to keep the specified file at viewport center."""
+        if file_idx is None or not self._row_heights:
+            return
+        
+        cols = self._cached_cols if self._cached_cols > 0 else 1
+        row = file_idx // cols
+        
+        if row >= len(self._row_y_positions):
+            return
+        
+        # Calculate where this row is positioned
+        row_y = self._row_y_positions[row]
+        row_height = self._row_heights[row] if row < len(self._row_heights) else 0
+        
+        # Center this row in viewport
+        viewport_height = self.viewport().height()
+        target_scroll = row_y + row_height / 2 - viewport_height / 2
+        
+        # Clamp to valid scroll range
+        max_scroll = self.verticalScrollBar().maximum()
+        target_scroll = max(0, min(target_scroll, max_scroll))
+        
+        self.verticalScrollBar().setValue(int(target_scroll))
+    
     def _on_scroll(self, value):
         """Handle scroll events."""
         self._update_viewport_rendering()
@@ -1552,10 +1605,18 @@ class ThumbnailArea(QAbstractScrollArea):
         return self.grid.get_button(img_path, width, self._item_border_width)
 
     def set_size_path_and_command(self, width, path, list_cmd):
+        # Save center file index before resize
+        center_file_idx = self._get_center_file_index()
+        
+        # Update width and recalculate
         self._item_width = width
         self.grid.set_directory_path_and_command(path, list_cmd)
         self._row_heights_valid = False  # Invalidate cache - width or files changed
         self._update_viewport_rendering()
+        
+        # Restore center file position after resize
+        if center_file_idx is not None:
+            self._scroll_to_center_file(center_file_idx)
 
     def load_thumbnail_for_button(self, btn, img_path, width):
         self.grid.thumbnail_loader.load_thumbnail_for_button(btn, img_path, width, self._item_border_width)
