@@ -1895,8 +1895,6 @@ class ImagePicker(QMainWindow):
         # Bind drop handlers for drag-and-drop to this picker
         bind_drop(self._gallery_grid, self._handle_drop)
         bind_right_drop(self._gallery_grid, self._handle_right_drop)
-        # bind_drop(self._gallery_grid, self._handle_drop)
-        # bind_right_drop(self._gallery_grid, self._handle_right_drop)
         
         QTimer.singleShot(100, self.activateWindow)
         self.show()
