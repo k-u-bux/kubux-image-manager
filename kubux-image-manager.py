@@ -501,12 +501,14 @@ class ThumbnailLoader(QObject):
     def _update_button(self, cache_key, pixmap):
         """Runs on main thread - updates button widget."""
         if cache_key in self.buttons:
+            print(f"updating button {cache_key}")
             btn = self.buttons[cache_key]
             btn.set_image(pixmap)
     
     def load_thumbnail_for_button(self, btn, img_path, width, border):
         """Load thumbnail for button (async if not cached). Common logic for initial load and resize."""
         cache_key = uniq_file_id( img_path, width )
+        print(f"loading button for image {img_path} with cache_key {cache_key}")
         btn.cache_key = cache_key
         btn.img_path = img_path
         
@@ -1302,7 +1304,8 @@ class DirectoryThumbnailGrid:
     def get_button(self, img_path, width, border_width):
         """Get or create a button for the given image path."""
         cache_key = uniq_file_id(img_path, width)
-        
+        print(f"get button for image {img_path} with cache key {cache_key}")
+
         # Check if button already exists in widget cache
         btn = self._widget_cache.get(cache_key, None)
         if btn is None:
@@ -1970,7 +1973,8 @@ class ImagePicker(QMainWindow):
     def _cache_widget(self):
         try:
             path_name = self.background_worker.path_name_queue.get_nowait()
-            self._gallery_grid.get_button(path_name, self.thumbnail_width)
+            # self._gallery_grid.get_button(path_name, self.thumbnail_width)
+            get_or_make_pil(path_name, self.thumbnail_width)
         except queue.Empty:
             pass
 
