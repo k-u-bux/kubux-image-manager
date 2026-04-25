@@ -1628,7 +1628,7 @@ class ThumbnailArea(QScrollArea):
 
 class LongMenu(QDialog):
     def __init__(self, master, default_option, other_options, font=None, x_pos=None, y_pos=None,
-                 pos="bottom", n_lines=12):
+                 pos="bottom", n_lines=20):
         super().__init__(master, Qt.Popup | Qt.FramelessWindowHint)
         self.result = default_option
         self._options = other_options
@@ -1644,7 +1644,7 @@ class LongMenu(QDialog):
         fm = QFontMetrics(self._main_font)
         char_width = fm.averageCharWidth()
         self._listbox.setMinimumWidth(char_width * max_length)
-        self._listbox.setMinimumHeight(fm.height() * min(n_lines, len(self._options)))
+        self._listbox.setMinimumHeight(20 + fm.height() * min(n_lines, len(self._options)))
 
         for option_name in other_options:
             self._listbox.addItem(option_name)
