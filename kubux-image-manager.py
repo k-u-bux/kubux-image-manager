@@ -485,7 +485,7 @@ class ThumbnailLoader(QObject):
         self.thumbnail_ready.connect(self._update_button, Qt.QueuedConnection)
         self.buttons = {}  # cache_key -> button
     
-    def load_async(self, cache_key, img_path, width, button):
+    def _load_async(self, cache_key, img_path, width, button):
         """Queue thumbnail generation for background processing."""
         self.buttons[cache_key] = button
         self.executor.submit(self._generate_thumbnail, cache_key, img_path, width)
@@ -521,7 +521,7 @@ class ThumbnailLoader(QObject):
             btn.set_image(QT_CACHE[cache_key])
         else:
             # Queue async thumbnail generation
-            self.load_async( cache_key, img_path, width, btn )
+            self._load_async( cache_key, img_path, width, btn )
 
     def shutdown(self):
         """Cleanup thread pool."""
