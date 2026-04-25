@@ -33,7 +33,7 @@ from datetime import datetime
 from math import gcd
 
 # PySide6 imports
-from PySide6.QtCore import (Qt, QSize, QPoint, QRect, QTimer, Signal, QObject, 
+from PySide6.QtCore import (Qt, QSize, QPoint, QRect, QTimer, Signal, QObject,
                             QEvent, QMimeData, QByteArray, QPropertyAnimation)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton, 
                               QVBoxLayout, QHBoxLayout, QGridLayout, QLineEdit, 
@@ -279,6 +279,8 @@ def move_file_to_directory(file_path, target_dir_path):
     
 # --- watch directory ---
 
+watch_for_changes = True
+
 class DirectoryEventHandler(QObject, FileSystemEventHandler):
     """Event handler for watchdog that emits a Qt signal when directory changes.
     
@@ -299,10 +301,11 @@ class DirectoryEventHandler(QObject, FileSystemEventHandler):
         self.directory_changed.connect(self.image_picker.master.broadcast_contents_change)
         
     def on_any_event(self, event):
-        log_debug(f"directory {self.directory} has changed.")
         # Emit signal - this is thread-safe and will invoke the connected slot
         # on the main thread via Qt's event loop
-        self.directory_changed.emit()
+        if watch_for_changes:
+            log_debug(f"directory {self.directory} has changed: {event}")
+            self.directory_changed.emit()
 
 
 class DirectoryWatcher():
@@ -1278,7 +1281,7 @@ class DirectoryThumbnailGrid:
         self._static_button_config_callback = static_button_config_callback
         self._dynamic_button_config_callback = dynamic_button_config_callback
         self._widget_cache = OrderedDict()
-        self._cache_size = 20
+        self._cache_size = 2000
         self._active_widgets = {}
         self._files = []
         
@@ -1288,7 +1291,7 @@ class DirectoryThumbnailGrid:
         """Update directory and list command, refresh file list."""
         self._directory_path = path
         self._list_cmd = list_cmd
-        self.regrid()
+        return self.update_file_list()
     
     def _recreate_thumbnail_loader(self):
         """Shutdown and recreate thumbnail loader to cancel stale tasks."""
@@ -1321,13 +1324,13 @@ class DirectoryThumbnailGrid:
         
         return btn
 
-    def refresh(self):
+    def refresh_buttons ( self ):
         """Refresh dynamic configuration for all active widgets."""
-        for img_path, btn in self._active_widgets.items():
-            if self._dynamic_button_config_callback:
+        if self._dynamic_button_config_callback:
+            for img_path, btn in self._active_widgets.items():
                 self._dynamic_button_config_callback(btn, img_path)
 
-    def regrid(self):
+    def update_file_list ( self ):
         """Reload file list from directory."""
         old_files = self._files
         self._files = list_image_files_by_command(self._directory_path, self._list_cmd)
@@ -1435,20 +1438,23 @@ class ThumbnailArea(QAbstractScrollArea):
     
     def _update_viewport_rendering(self):
         """Update which rows are visible and render only those."""
+       # Calculate grid parameters
+        viewport_width = self.viewport().width()
+        cols = self._calculate_columns(viewport_width)
+        if cols == 0:
+            cols = 1
+        
         if not self.grid._files:
             self._total_rows = 0
             self._row_heights = []
             self._row_y_positions = []
             self._row_heights_valid = False
             self.verticalScrollBar().setRange(0, 0)
+            self._visible_start_row = 0
+            self._visible_end_row = 0
+            self._layout_visible_rows(cols, 0)
             return
             
-        # Calculate grid parameters
-        viewport_width = self.viewport().width()
-        cols = self._calculate_columns(viewport_width)
-        if cols == 0:
-            cols = 1
-        
         # Only recalculate row heights if something changed
         if not self._row_heights_valid or cols != self._cached_cols or viewport_width != self._cached_viewport_width:
             virtual_height = self._calculate_row_heights(cols)
@@ -1466,10 +1472,15 @@ class ThumbnailArea(QAbstractScrollArea):
         visible_start_row, visible_end_row = self._find_visible_rows(scroll_pos, viewport_height)
         
         # Update scrollbar range
-        max_scroll = max(0, virtual_height - viewport_height)
-        self.verticalScrollBar().setRange(0, int(max_scroll))
-        self.verticalScrollBar().setPageStep(viewport_height)
-        self.verticalScrollBar().setSingleStep(viewport_height // 10)
+        scrollbar = self.verticalScrollBar()
+        blocked = scrollbar.blockSignals(True)
+        try:
+            max_scroll = max(0, virtual_height - viewport_height)
+            scrollbar.setRange(0, int(max_scroll))
+            scrollbar.setPageStep(viewport_height)
+            scrollbar.setSingleStep(viewport_height // 10)
+        finally:
+            scrollbar.blockSignals(blocked)
         
         # Always layout visible rows (visible range check happens inside _layout_visible_rows)
         self._visible_start_row = visible_start_row
@@ -1590,7 +1601,12 @@ class ThumbnailArea(QAbstractScrollArea):
         max_scroll = self.verticalScrollBar().maximum()
         target_scroll = max(0, min(target_scroll, max_scroll))
         
-        self.verticalScrollBar().setValue(int(target_scroll))
+        scrollbar = self.verticalScrollBar()
+        blocked = scrollbar.blockSignals(True)
+        try:
+            scrollbar.setValue(int(target_scroll))
+        finally:
+            scrollbar.blockSignals(blocked)
     
     def _on_scroll(self, value):
         """Handle scroll events."""
@@ -1610,36 +1626,36 @@ class ThumbnailArea(QAbstractScrollArea):
         
         # Update width and recalculate
         self._item_width = width
-        self.grid.set_directory_path_and_command(path, list_cmd)
-        self._row_heights_valid = False  # Invalidate cache - width or files changed
-        self._update_viewport_rendering()
+        if self.grid.set_directory_path_and_command(path, list_cmd):
+            self._row_heights_valid = False  # Invalidate cache - width or files changed
+            self._update_viewport_rendering()
         
-        # Restore center file position after resize
-        if center_file_idx is not None:
-            self._scroll_to_center_file(center_file_idx)
+            # Restore center file position after resize
+            if center_file_idx is not None:
+                self._scroll_to_center_file(center_file_idx)
 
     def load_thumbnail_for_button(self, btn, img_path, width):
         self.grid.thumbnail_loader.load_thumbnail_for_button(btn, img_path, width, self._item_border_width)
 
     def redraw(self):
         """Force full re-render of all visible thumbnails."""
-        # Hide all active widgets
         for btn in self.grid._active_widgets.values():
             if btn is not None:
                 btn.hide()
         self.grid._active_widgets = {}
-        self._row_heights_valid = False  # Invalidate cache - forcing re-render
-        # Trigger full re-layout
+        self._row_heights_valid = False
         self._update_viewport_rendering()
 
     def refresh(self):
-        self.grid.refresh()
+        self.grid.refresh_buttons()
         self._update_viewport_rendering()
 
     def regrid(self):
-        self.grid.regrid()
-        self._row_heights_valid = False  # Invalidate cache - file list changed
-        self._update_viewport_rendering()
+        watch_for_changes = False
+        if self.grid.update_file_list():
+            self._row_heights_valid = False
+            self.refresh()
+        watch_for_changes = True
 
     def shutdown(self):
         """Cleanup resources."""
@@ -2402,6 +2418,12 @@ class ImagePicker(QMainWindow):
             self.master.open_picker_dialogs.remove(self)
         event.accept()
 
+    def suspendWatcher(self):
+        self.watcher.stop_watching()
+
+    def resumeWatcher(self):
+        self.watcher.start_watching( self.image_dir )
+
 
 class FlexibleTextField(QWidget):
     def __init__(self, parent, command_callback, commands="", font=None):
@@ -2791,12 +2813,14 @@ class ImageManager(QMainWindow):
         self.update_button_status()
 
     def regrid_open_pickers(self):
+        watch_for_changes = False
         log_debug(f"regridding all open pickers.")
         self.regrid_job = None
         for picker in self.open_picker_dialogs:
             log_debug(f"rigridding picker {picker}")
-            picker._regrid()
-        self.update_button_status()
+            picker._regrid()            
+            self.update_button_status()
+        watch_for_changes = True
 
     def select_file(self, path):
         self.selected_files.append(path)
