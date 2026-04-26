@@ -1598,14 +1598,12 @@ class ThumbnailArea(QScrollArea):
         self._render_viewport()
 
     def refresh(self):
-        self.grid.refresh_buttons()
-        self._update_viewport_rendering()
+        self._render_viewport()
 
     def regrid(self):
         watch_for_changes = False
-        if self.grid.update_file_list():
-            self._row_heights_valid = False
-            self.refresh()
+        self.grid.update_file_list()
+        self.redraw()
         watch_for_changes = True
 
     def shutdown(self):
