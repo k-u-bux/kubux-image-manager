@@ -1564,6 +1564,8 @@ class ThumbnailArea(QScrollArea):
                 btn.hide()
         self.grid._active_widgets = {}
 
+        self._cols = self._calculate_columns( self._vp_width() )
+
         if not self.grid._files:
             self._rows = 0
             self._row_heights = []
@@ -1571,7 +1573,6 @@ class ThumbnailArea(QScrollArea):
             self.verticalScrollBar().setRange(0, 0)
             return
 
-        self._cols = self._calculate_columns( self._vp_width() )
         self._layout_visible_rows( self._cols, self._scroll_position )
     
         
