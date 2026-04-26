@@ -1621,7 +1621,8 @@ class ThumbnailArea(QScrollArea):
 
     def get_current_column_count(self):
         """Get the actual number of columns currently being displayed."""
-        return self._cols
+        return self._calculate_columns( self._vp_width() )
+
 
 
 class LongMenu(QDialog):
@@ -2273,7 +2274,7 @@ class ImagePicker(QMainWindow):
         self.thumbnail_width = value
         self.thumbnail_slider.blockSignals(False)
         self._regrid()
-        self._redraw()
+
 
     def _show_sizing_menu(self):
         """Show menu with slider and column options, greying out infeasible column counts."""
