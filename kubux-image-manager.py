@@ -1367,6 +1367,8 @@ class ThumbnailArea(QScrollArea):
             dynamic_button_config_callback=dynamic_button_config_callback
         )
         
+        self.refresh_job = None
+
         self._center_idx = None
         self._rows = 0
         self._row_heights = []  # Height of each row
@@ -1574,12 +1576,19 @@ class ThumbnailArea(QScrollArea):
             return
 
         self._layout_visible_rows( self._cols, self._scroll_position )
-    
-        
-    def _on_scroll(self, value):
-        self._scroll_position = value
+
+    def _on_scroll_debounce_helper ( self ):
         self._render_viewport()
-        self._center_idx = self._index_from_scroll_pos( value )
+        self._center_idx = self._index_from_scroll_pos( self._scroll_position )
+
+    def _on_scroll ( self, value ):
+        self._scroll_position = value
+        if self.refresh_job:
+            self.refresh_job.stop()
+        self.refresh_job = QTimer()
+        self.refresh_job.setSingleShot( True )
+        self.refresh_job.timeout.connect( self._on_scroll_debounce_helper )
+        self.refresh_job.start(50)
     
     def resizeEvent(self, event):
         super().resizeEvent( event )
@@ -1894,7 +1903,7 @@ class ImagePicker(QMainWindow):
         self._update_sizing_ui()
         self._cache_timer = QTimer(self)
         self._cache_timer.timeout.connect(self._cache_widget)
-        self._cache_timer.start(50)
+        # self._cache_timer.start(50)
 
         self.rational_fractions = sorted( [ p/q for q in [1,2,3,4,5,6,7,8,9,10,12,15,20,24] for p in range(1, q + 1) if gcd(p, q) == 1 ] )
 
