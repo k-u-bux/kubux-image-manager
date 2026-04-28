@@ -1927,11 +1927,12 @@ class ImagePicker(QMainWindow):
         
         self._create_widgets()
         self._regrid()
+        self._gallery_grid.move_scrollbar( picker_info[5] )
         self._redraw()
         self._update_sizing_ui()
         self._cache_timer = QTimer(self)
         self._cache_timer.timeout.connect(self._cache_widget)
-        self._gallery_grid.move_scrollbar( picker_info[5] )
+        
         # self._cache_timer.start(50)
 
         self.rational_fractions = sorted( [ p/q for q in [1,2,3,4,5,6,7,8,9,10,12,15,20,24] for p in range(1, q + 1) if gcd(p, q) == 1 ] )
