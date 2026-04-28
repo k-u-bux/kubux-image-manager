@@ -2623,7 +2623,7 @@ class ImageManager(QMainWindow):
 
         self.ui_scale = self.app_settings.get("ui_scale", 1.0)
         self.main_win_geometry = self.app_settings.get("main_win_geometry", None)
-        self.commands = self.app_settings.get("commands", "Open: {*}\nSetWP: *\nOpen: ${HOME}/Pictures")
+        self.commands = self.app_settings.get("commands", "Open: {*}\nFullscreen: {*}\nSetWP: *\nOpen: ${HOME}/Pictures")
         self.current_index = int(self.app_settings.get("current_index", 1))
         self.selected_files = self.app_settings.get("selected_files", [])
         self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider", 0 ])
