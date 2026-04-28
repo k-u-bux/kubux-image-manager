@@ -548,7 +548,11 @@ class ThumbnailLoader(QObject):
             self._load_async( cache_key, img_path, width, btn )
 
     def shutdown(self):
-        """Cleanup thread pool."""
+        self.buttons.clear()
+        try:
+            self.thumbnail_ready.disconnect(self._update_button)
+        except TypeError:
+            pass # Already disconnected        
         self.executor.shutdown(wait=False)
 
 
