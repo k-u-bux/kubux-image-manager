@@ -1404,6 +1404,9 @@ class ThumbnailArea(QScrollArea):
         self.setFocusPolicy( Qt.StrongFocus )
         self.viewport().setMouseTracking( True )
 
+    def scrollbar_pos ( self ):
+        return self.verticalScrollBar().value()
+
     def _vp_height ( self ):
         return self.viewport().height()
 
@@ -1415,7 +1418,7 @@ class ThumbnailArea(QScrollArea):
         self._item_width = width
         self.grid.set_directory_path_and_command( path, list_cmd )
         self._recalculate_grid()
-        self._move_scrollbar( self._scroll_pos_from_index( self._center_idx ) )
+        self.move_scrollbar( self._scroll_pos_from_index( self._center_idx ) )
         self._render_viewport()
 
 
@@ -1566,7 +1569,7 @@ class ThumbnailArea(QScrollArea):
         target_scroll = row_y + row_height / 2 - self._vp_height() / 2
         return max( 0, min( target_scroll, max_scroll ) )
         
-    def _move_scrollbar ( self, value ):
+    def move_scrollbar ( self, value ):
         self._scroll_position = value
         scrollbar = self.verticalScrollBar()
         blocked = scrollbar.blockSignals( True )
@@ -1618,7 +1621,7 @@ class ThumbnailArea(QScrollArea):
     def resizeEvent(self, event):
         super().resizeEvent( event )
         self._recalculate_grid()
-        self._move_scrollbar( self._scroll_pos_from_index( self._center_idx ) )
+        self.move_scrollbar( self._scroll_pos_from_index( self._center_idx ) )
         self._render_viewport()
     
     def get_button(self, img_path, width, pre_cache=True):
@@ -1928,6 +1931,7 @@ class ImagePicker(QMainWindow):
         self._update_sizing_ui()
         self._cache_timer = QTimer(self)
         self._cache_timer.timeout.connect(self._cache_widget)
+        self._gallery_grid.move_scrollbar( picker_info[5] )
         # self._cache_timer.start(50)
 
         self.rational_fractions = sorted( [ p/q for q in [1,2,3,4,5,6,7,8,9,10,12,15,20,24] for p in range(1, q + 1) if gcd(p, q) == 1 ] )
@@ -1958,7 +1962,7 @@ class ImagePicker(QMainWindow):
 
     def get_picker_info(self):
         geom = self.saveGeometry().toBase64().data().decode()
-        return self.thumbnail_width, self.image_dir, self.list_cmd, geom, self.sizing_mode
+        return self.thumbnail_width, self.image_dir, self.list_cmd, geom, self.sizing_mode, self._gallery_grid.scrollbar_pos()
 
     def _on_shell(self):
         terminal = os.environ.get('TERMINAL', 'xterm')
@@ -2622,7 +2626,7 @@ class ImageManager(QMainWindow):
         self.commands = self.app_settings.get("commands", "Open: {*}\nSetWP: *\nOpen: ${HOME}/Pictures")
         self.current_index = int(self.app_settings.get("current_index", 1))
         self.selected_files = self.app_settings.get("selected_files", [])
-        self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider"])
+        self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider", 0 ])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
         self.open_image_info = self.app_settings.get("open_image_info", [])
         self.list_commands = self.app_settings.get("list_commands", ["ls", "find . -maxdepth 1 -type f"])
@@ -2901,7 +2905,8 @@ class ImageManager(QMainWindow):
                                   directory_path,
                                   self.new_picker_info[2],
                                   self.new_picker_info[3],
-                                  self.new_picker_info[4]])
+                                  self.new_picker_info[4],
+                                  self.new_picker_info[5]])
 
     def set_wp(self, path):
         try:
