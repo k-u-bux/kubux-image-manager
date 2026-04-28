@@ -1619,6 +1619,7 @@ class ThumbnailArea(QScrollArea):
         self.refresh_job.start(50)
     
     def resizeEvent(self, event):
+        print( f"resizing thumbnail area, event = {event}" )
         super().resizeEvent( event )
         self._recalculate_grid()
         self.move_scrollbar( self._scroll_pos_from_index( self._center_idx ) )
