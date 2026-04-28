@@ -1583,7 +1583,7 @@ class ThumbnailArea(QScrollArea):
             scrollbar.blockSignals( blocked )
 
     def _recalculate_grid ( self ):
-        self._cols == self._calculate_columns( self._vp_width() )
+        self._cols = self._calculate_columns( self._vp_width() )
         self._height = self._calculate_row_heights( self._cols )
         self._rows = len( self._row_heights )
         
