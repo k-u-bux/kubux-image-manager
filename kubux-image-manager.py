@@ -276,7 +276,27 @@ def move_file_to_directory(file_path, target_dir_path):
         log_error(f"An unexpected error occurred: {e}")
         return None
 
+
+# --- helper ---
+
+def interleaved_range(start, middle, end):
+    result = [middle]
     
+    # Calculate the maximum possible distance to cover the whole range
+    max_dist = max(middle - start, (end - 1) - middle)
+    
+    for offset in range(1, max_dist + 1):
+        low = middle - offset
+        high = middle + offset
+        
+        if low >= start:
+            result.append(low)
+        if high < end:
+            result.append(high)
+            
+    return result
+    
+
 # --- watch directory ---
 
 watch_for_changes = True
@@ -1441,9 +1461,10 @@ class ThumbnailArea(QScrollArea):
         for i in range(visible_start_row, len(self._row_heights)):
             if self._row_y_positions[i] <= scroll_bottom:
                 visible_end_row = i
+        visible_middle_row = visible_start_row + ( ( visible_end_row - visible_start_row ) // 2 )
         visible_start_row = max( 0, visible_start_row - self._buffer_rows )
         visible_end_row = max( 0, min( self._rows - 1, visible_end_row + self._buffer_rows ) )
-        return visible_start_row, visible_end_row
+        return visible_start_row, visible_middle_row, visible_end_row
     
    
     def _layout_visible_rows ( self, cols, scroll_offset ):
@@ -1458,7 +1479,7 @@ class ThumbnailArea(QScrollArea):
         
         # Calculate which files are in visible rows
         # Always layout visible rows (visible range check happens inside _layout_visible_rows)
-        visible_start_row, visible_end_row = self._find_visible_rows( scroll_offset, self._vp_height() )
+        visible_start_row, visible_middle_row, visible_end_row = self._find_visible_rows( scroll_offset, self._vp_height() )
         
         # print( f"visible_start_row = {visible_start_row}, visible_end_row = {visible_end_row}" )
 
@@ -1485,7 +1506,7 @@ class ThumbnailArea(QScrollArea):
         # print( f"start = {start_idx}, end = {end_idx}" )
 
         # Layout visible files with absolute positioning
-        for idx in range(start_idx, end_idx):
+        for idx in interleaved_range(start_idx, visible_middle_row * cols,  end_idx):
             if idx >= len(self.grid._files):
                 break
                 
