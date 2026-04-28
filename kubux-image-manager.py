@@ -1636,7 +1636,7 @@ class ThumbnailArea(QScrollArea):
         self._render_viewport()
 
     def refresh(self):
-        self.redraw()
+        self._render_viewport()
 
     def regrid(self):
         watch_for_changes = False
