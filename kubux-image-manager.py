@@ -2376,6 +2376,13 @@ class ImagePicker(QMainWindow):
         if self.sizing_mode != "slider":
             self._update_sizing_ui()
 
+    def wheelEvent(self, event):
+        scrollbar = self._gallery_grid.verticalScrollBar()
+        delta = event.angleDelta().y()
+        num_steps = delta // 120
+        new_value = scrollbar.value() - (num_steps * scrollbar.singleStep())
+        scrollbar.setValue(new_value)
+
     def keyPressEvent(self, event):
         key = event.key()
         scrollbar = self._gallery_grid.verticalScrollBar()
