@@ -9,7 +9,7 @@ Kubux Image Manager is a powerful yet simple image management application for Li
 ## Features
 
 - **Flexible Image Browsing**: Navigate your file system with an intuitive breadcrumb interface
-- **Thumbnail Gallery**: View image thumbnails with adjustable size (96-1920px)
+- **Thumbnail Gallery**: View image thumbnails with adjustable size (min 96px, max adapts to screen width)
 - **Advanced Image Viewer**: Built-in viewer with zoom, pan, and fullscreen capabilities
 - **Multi-Selection Operations**: Select multiple files for batch operations
 - **Drag and Drop File Management**: Move files between directories with intuitive mouse operations

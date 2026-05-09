@@ -41,7 +41,8 @@ From there, you can:
 - Click thumbnails to select them (blue border indicates selection)
 - Right-click thumbnails to execute commands
 - Drag thumbnails to move files between directories
-- Double-click on thumbnails (with `Open: {*}` command) to open them in the viewer
+- Shift+Right-click on a thumbnail to execute the current command on that single file
+- Right-click on a thumbnail to open the command context menu
 
 ---
 
@@ -222,11 +223,13 @@ You can drop files (from left-drag or right-drag) onto:
 
 | Control | Function |
 |---------|----------|
+| **Size button** | Opens sizing menu (slider or fixed column counts: 1,2,3,4,5,6,7,8,10,12,16,20,24) |
 | **Size slider** | Adjusts thumbnail size (96-1920 pixels) |
 | **Show field** | Shell command to list which files appear (default: `ls`) |
 | **Des. button** | Deselects all files in current directory only |
 | **Sel. button** | Selects all files in current directory |
 | **Apply button** | Opens command menu to apply to selected files here |
+| **Shell button** | Opens a terminal in the current directory |
 
 #### The "Show:" Field
 
@@ -254,6 +257,15 @@ ls -S
 
 - Press **Enter** in the Show field to execute and refresh
 - **Right-click** on the Show field to see history of previous commands
+
+#### The Size Button
+
+The **Size** button opens a menu with two sizing modes:
+
+- **slider** (default): Adjust thumbnail size interactively with a horizontal slider (range: 96px to screen width)
+- **N columns**: Lock thumbnails to a fixed number of columns (1,2,3,4,5,6,7,8,10,12,16,20,24). Unavailable column counts (too many to fit the window) are greyed out. The button label changes to show the current column count (e.g., "6 columns").
+
+When using fixed column mode, the slider is hidden. Switch back to slider mode from the size menu to show it again.
 
 ### Keyboard Navigation
 
