@@ -225,7 +225,7 @@ def execute_shell_command_with_capture(command):
 def filter_for_files_in_directory(command, directory):
     result = subprocess.run(command, cwd=directory, shell=True, capture_output=True, text=True)
     line_list = result.stdout.splitlines()
-    return [file for file in line_list if (os.path.isfile(file) and is_file_in_dir(file, directory))]
+    return [file for file in line_list if (os.path.isfile(os.path.join(directory, file)) and is_file_in_dir(file, directory))]
         
 def filter_for_files(command):
     line_list = execute_shell_command_with_capture(command).stdout.splitlines()
@@ -1640,6 +1640,7 @@ class ThumbnailArea(QScrollArea):
         self._render_viewport()
 
     def regrid(self):
+        global watch_for_changes
         watch_for_changes = False
         self.grid.update_file_list()
         self.redraw()
@@ -2808,6 +2809,7 @@ class ImageManager(QMainWindow):
         self.update_button_status()
 
     def regrid_open_pickers(self):
+        global watch_for_changes
         watch_for_changes = False
         log_debug(f"regridding all open pickers.")
         self.regrid_job = None
