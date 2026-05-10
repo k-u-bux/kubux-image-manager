@@ -2551,12 +2551,15 @@ def expand_wildcards(command_line, selected_files):
     if (has_single_wildcard or has_list_wildcard) and not selected_files:
         return []
 
-    keep_fingers_crossed = "dasdklasdashdaisdhiunerwehuacnkajdasudhuiewrnksvjiurkanr"
     quoted_args = shlex.join(selected_files)
+    while True:
+        sentinel = secrets.token_hex(32)
+        if sentinel not in quoted_args:
+            break
     outputs = []
     for file in selected_files:
         quoted_file = shlex.quote(file)
-        cmd = command_line.replace("{*}", keep_fingers_crossed).replace("*", quoted_args).replace(keep_fingers_crossed, quoted_file)
+        cmd = command_line.replace("{*}", sentinel).replace("*", quoted_args).replace(sentinel, quoted_file)
         outputs.append(cmd)
     if outputs:
         return outputs
