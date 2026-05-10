@@ -424,19 +424,23 @@ def uniq_file_id(img_path, width=-1):
     key = f"{real_path}_{width}_{mtime}"
     return hashlib.sha256(key.encode('utf-8')).hexdigest()
 
+CACHE_LOCK = threading.Lock()
+
 PIL_CACHE = OrderedDict()
 QT_CACHE = OrderedDict()
 
 def get_full_size_image(img_path):
     cache_key = uniq_file_id(img_path)
-    if cache_key in PIL_CACHE:
-        PIL_CACHE.move_to_end(cache_key)
-        return PIL_CACHE[cache_key]
+    with CACHE_LOCK:
+        if cache_key in PIL_CACHE:
+            PIL_CACHE.move_to_end(cache_key)
+            return PIL_CACHE[cache_key]
     try:
         full_image = Image.open(img_path)
-        PIL_CACHE[cache_key] = full_image
-        if len(PIL_CACHE) > CACHE_SIZE:
-            PIL_CACHE.popitem(last=False)
+        with CACHE_LOCK:
+            PIL_CACHE[cache_key] = full_image
+            if len(PIL_CACHE) > CACHE_SIZE:
+                PIL_CACHE.popitem(last=False)
         return full_image
     except Exception as e:
         log_error(f"Error loading image for {img_path}: {e}")
@@ -482,14 +486,16 @@ def pil_to_qpixmap(pil_image):
     return QPixmap.fromImage(qimage.copy())
 
 def get_or_make_qt_by_key(cache_key, img_path, thumbnail_max_size):
-    if cache_key in QT_CACHE:
-        QT_CACHE.move_to_end(cache_key)
-        return QT_CACHE[cache_key]
+    with CACHE_LOCK:
+        if cache_key in QT_CACHE:
+            QT_CACHE.move_to_end(cache_key)
+            return QT_CACHE[cache_key]
     pil_image = get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size)
     qt_pixmap = pil_to_qpixmap(pil_image)
-    QT_CACHE[cache_key] = qt_pixmap
-    if len(QT_CACHE) > CACHE_SIZE:
-        QT_CACHE.popitem(last=False)
+    with CACHE_LOCK:
+        QT_CACHE[cache_key] = qt_pixmap
+        if len(QT_CACHE) > CACHE_SIZE:
+            QT_CACHE.popitem(last=False)
     return qt_pixmap
      
 def get_or_make_qt(img_path, thumbnail_max_size):
@@ -539,13 +545,14 @@ class ThumbnailLoader(QObject):
         btn.setFixedSize( thumb_w + 2 * border, thumb_h + 2 * border )
         
         # Check if thumbnail exists in Qt cache already
-        if cache_key in QT_CACHE:
-            # Use cached thumbnail immediately
-            QT_CACHE.move_to_end(cache_key)
-            btn.set_image(QT_CACHE[cache_key])
-        else:
-            # Queue async thumbnail generation
-            self._load_async( cache_key, img_path, width, btn )
+        with CACHE_LOCK:
+            if cache_key in QT_CACHE:
+                # Use cached thumbnail immediately
+                QT_CACHE.move_to_end(cache_key)
+                btn.set_image(QT_CACHE[cache_key])
+            else:
+                # Queue async thumbnail generation
+                self._load_async( cache_key, img_path, width, btn )
 
     def shutdown(self):
         self.buttons.clear()
