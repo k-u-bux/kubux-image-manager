@@ -2393,8 +2393,8 @@ class ImagePicker(QMainWindow):
     def wheelEvent(self, event):
         scrollbar = self._gallery_grid.verticalScrollBar()
         delta = event.angleDelta().y()
-        num_steps = delta // 120
-        new_value = scrollbar.value() - (num_steps * scrollbar.singleStep())
+        num_steps = float(delta) / 120.0
+        new_value = scrollbar.value() - int(num_steps * scrollbar.singleStep())
         scrollbar.setValue(new_value)
 
     def keyPressEvent(self, event):
