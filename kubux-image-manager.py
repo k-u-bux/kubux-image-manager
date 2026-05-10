@@ -1458,7 +1458,7 @@ class ThumbnailArea(QScrollArea):
     def _find_visible_rows ( self, scroll_pos, viewport_height ):
         """Find which rows are visible using the row position array."""
         if not self._row_heights or not self._row_y_positions:
-            return 0, 0
+            return 0, 0, 0
         visible_start_row = 0
         for i in range(len(self._row_heights)):
             if self._row_y_positions[i] <= scroll_pos:
@@ -2722,7 +2722,10 @@ class ImageManager(QMainWindow):
         for file in old_selected:
             if is_file_in_dir(file, source_dir):
                 new_path = move_file_to_directory(file, target_dir)
-                self.selected_files.append(new_path)
+                if new_path:
+                    self.selected_files.append(new_path)
+                else:
+                    self.selected_files.append(file)
             else:
                 self.selected_files.append(file)
         self.broadcast_contents_change()
