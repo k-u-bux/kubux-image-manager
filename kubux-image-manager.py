@@ -2707,10 +2707,11 @@ class ImageManager(QMainWindow):
 
     def move_file_to_directory(self, file_path, target_dir):
         new_path = move_file_to_directory(file_path, target_dir)
-        if file_path in self.selected_files:
-            self.unselect_file(file_path)
-            self.select_file(new_path)
-        self.broadcast_contents_change()
+        if new_path:
+            if file_path in self.selected_files:
+                self.unselect_file(file_path)
+                self.select_file(new_path)
+            self.broadcast_contents_change()
 
     def selected_files_in_directory(self, directory):
         return [file for file in self.selected_files if is_file_in_dir(file, directory)]
