@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import traceback
-import types
 import shutil
 import hashlib
 import json
@@ -34,7 +33,7 @@ from math import gcd
 
 # PySide6 imports
 from PySide6.QtCore import (Qt, QSize, QPoint, QRect, QTimer, Signal, QObject,
-                            QEvent, QMimeData, QByteArray, QPropertyAnimation)
+                            QEvent, QByteArray)
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QLabel, QPushButton, 
                               QVBoxLayout, QHBoxLayout, QGridLayout, QLineEdit, 
                               QTextEdit, QScrollArea, QSlider, QFileDialog,
@@ -49,7 +48,6 @@ from PySide6.QtGui import (QPixmap, QImage, QPainter, QColor, QFont, QFontMetric
 from watchdog.events import FileSystemEventHandler, FileClosedNoWriteEvent, FileOpenedEvent
 from watchdog.observers import Observer
 
-import requests
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 
@@ -654,8 +652,8 @@ def set_wallpaper(image_path, error_callback=fallback_show_error):
                 ["gsettings", "set", "org.gnome.desktop.background", "picture-uri", f"{file_uri}"]
             ]
             for method in methods:
-                exit_code = subprocess.run(method)
-                if exit_code == 0:
+                completed_process = subprocess.run(method)
+                if completed_process.returncode == 0:
                     success = True
                     break
         if success:
@@ -1626,7 +1624,6 @@ class ThumbnailArea(QScrollArea):
         self.refresh_job.start(50)
     
     def resizeEvent(self, event):
-        print( f"resizing thumbnail area, event = {event}" )
         super().resizeEvent( event )
         self._recalculate_grid()
         self.move_scrollbar( self._scroll_pos_from_index( self._center_idx ) )
@@ -1648,10 +1645,14 @@ class ThumbnailArea(QScrollArea):
 
     def regrid(self):
         global watch_for_changes
+        old_value = watch_for_changes
         watch_for_changes = False
-        self.grid.update_file_list()
-        self.redraw()
-        watch_for_changes = True
+        try:
+            self.grid.update_file_list()
+            self.redraw()
+        except Exception as e:
+            log_error(f"something happened: {e}")
+        watch_for_changes = old_value
 
     def shutdown(self):
         """Cleanup resources."""
@@ -2071,9 +2072,6 @@ class ImagePicker(QMainWindow):
         canvas_layout.addWidget(self._gallery_grid)
         
         main_layout.addWidget(self._canvas_frame, 1)
-
-        #DEBUG
-        print(f"Viewport height: {self._gallery_grid.viewport().height()}")
 
         # Bottom bar
         self._bot_frame = QWidget()
@@ -2824,14 +2822,18 @@ class ImageManager(QMainWindow):
 
     def regrid_open_pickers(self):
         global watch_for_changes
-        watch_for_changes = False
-        log_debug(f"regridding all open pickers.")
-        self.regrid_job = None
-        for picker in self.open_picker_dialogs:
-            log_debug(f"rigridding picker {picker}")
-            picker._regrid()            
-            self.update_button_status()
-        watch_for_changes = True
+        old_value = watch_for_changes
+        try:
+            watch_for_changes = False
+            log_debug(f"regridding all open pickers.")
+            self.regrid_job = None
+            for picker in self.open_picker_dialogs:
+                log_debug(f"rigridding picker {picker}")
+                picker._regrid()            
+                self.update_button_status()
+        except Exception as e:
+            log_debug(f"something has happened: {e}")
+        watch_for_changes = old_value
 
     def select_file(self, path):
         self.selected_files.append(path)
