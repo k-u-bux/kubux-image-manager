@@ -15,7 +15,7 @@ Kubux Image Manager is a powerful yet simple image management application for Li
 - **Drag and Drop File Management**: Move files between directories with intuitive mouse operations
 - **Command System**: Execute custom commands on selected files with wildcards and environment variables
 - **Multi-window Interface**: Open multiple browser windows simultaneously for different folders
-- **Persistent Settings**: Application remembers window positions, open directories, and selections
+- **Persistent Settings**: Application remembers window positions, open directories, selections, and viewer state (zoom, pan, scroll)
 - **Desktop Integration**: Set wallpaper directly from the application on supported Linux DEs
 - **Directory Watching**: Auto-refresh when files change
 - **Background Thumbnail Preloading**: Predictively caches thumbnails for smooth navigation
@@ -84,6 +84,12 @@ Use `*` for all selected files, `{*}` for per-file expansion.
 
 Settings are stored in:
 - `~/.config/kubux-image-manager/app_settings.json`
+
+You can load settings from a custom path with the `--settings` flag:
+```bash
+kubux-image-manager --settings /path/to/custom_settings.json
+```
+This also sets `CONFIG_DIR` to the directory containing that file.
 
 Thumbnail cache is stored in:
 - `~/.cache/kubux-thumbnail-cache/thumbnails/`

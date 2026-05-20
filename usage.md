@@ -308,6 +308,10 @@ When zoomed in beyond the window size:
 - Cursor changes to a move cursor while panning
 - Scrollbars appear when the image exceeds the viewport
 
+#### Session Persistence
+
+Viewer state (zoom level, fit-to-window mode, horizontal and vertical scroll position) is saved and restored across application restarts.
+
 ### Fullscreen Mode
 
 | Control | Action |
@@ -439,6 +443,7 @@ Kubux Image Manager automatically saves and restores:
 | "Show:" commands per picker | Saved per picker |
 | Selected files | Persists across sessions |
 | All open picker and viewer windows | Re-opened on restart |
+| Viewer state (zoom, fit-to-window, scroll) | Persisted per window |
 | "Show:" command history | For dropdown menu |
 | UI scale factor | Global setting |
 
