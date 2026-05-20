@@ -1017,6 +1017,10 @@ class ImageViewer(QMainWindow):
         self.dir_name = os.path.dirname(self.image_path)
         self.window_geometry = image_info[1]
         self.is_fullscreen = image_info[2]
+        self.fit_to_window = image_info[3]
+        self.zoom_factor = image_info[4]
+        self.stored_scroll_y = image_info[5]
+        self.stored_scroll_x = image_info[6]
         self.original_image = get_full_size_image(self.image_path)
         self.display_image = None
         self.photo_image = None
@@ -1024,29 +1028,17 @@ class ImageViewer(QMainWindow):
         if self.window_geometry is not None:
             self.restoreGeometry(QByteArray.fromBase64(self.window_geometry.encode()))
 
-        w, h = self.original_image.size
-        x = w
-        y = h
-        while x < 1000 and y < 600:
-            x = 1.1 * x
-            y = 1.1 * y
-        while 1300 < x or 900 < y:
-            x = x / 1.1
-            y = y / 1.1
-
-        canvas_width = int(x)
-        canvas_height = int(y)
-
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
+        ow, oh = self.original_image.size
         self.filename_widget = EditableLabelWithCopy(
             central_widget,
             initial_text=self.file_name,
-            info=f"{w}x{h}",
+            info=f"{ow}x{oh}",
             on_rename_callback=self._rename_current_image,
             font=get_font(self)
         )
@@ -1073,13 +1065,10 @@ class ImageViewer(QMainWindow):
         main_layout.addWidget(self.image_frame, 1)
         main_layout.addWidget(self.filename_widget)
 
-        self.zoom_factor = x / w
-        self.fit_to_window = True
         self.pan_start_x = 0
         self.pan_start_y = 0
         self.panning = False
 
-        self.resize(canvas_width, canvas_height + 40)
         self._update_title()
         self._update_image()
 
@@ -1095,9 +1084,17 @@ class ImageViewer(QMainWindow):
         self.activateWindow()
         self.canvas.setFocus()
 
+        # Restore scroll position after _update_image has rendered
+        if self.window_geometry is not None and self.stored_scroll_y > 0:
+            QTimer.singleShot(200, lambda: self.scroll_area.verticalScrollBar().setValue(self.stored_scroll_y))
+        if self.window_geometry is not None and self.stored_scroll_x > 0:
+            QTimer.singleShot(200, lambda: self.scroll_area.horizontalScrollBar().setValue(self.stored_scroll_x))
+
     def get_image_info(self):
         geom = self.saveGeometry().toBase64().data().decode()
-        return self.image_path, geom, self.is_fullscreen
+        scroll_x = self.scroll_area.horizontalScrollBar().value()
+        scroll_y = self.scroll_area.verticalScrollBar().value()
+        return self.image_path, geom, self.is_fullscreen, self.fit_to_window, self.zoom_factor, scroll_y, scroll_x
 
     def set_screen_mode(self, is_fullscreen):
         if is_fullscreen:
@@ -2913,10 +2910,10 @@ class ImageManager(QMainWindow):
             traceback.print_exc()
 
     def open_image_file(self, file_path):
-        self.open_image([file_path, None, False])
+        self.open_image([file_path, None, False, True, 0, 0])
 
     def fullscreen_image_file(self, file_path):
-        self.open_image([file_path, None, True])
+        self.open_image([file_path, None, True, True, 0, 0])
 
     def open_image_directory(self, directory_path):
         if self.open_picker_dialogs:
@@ -2952,7 +2949,6 @@ if __name__ == "__main__":
             del sys.argv[idx:idx+2]
 
     if settings_path:
-        global APP_SETTINGS_FILE, CONFIG_DIR  # noqa: F821
         APP_SETTINGS_FILE = settings_path
         CONFIG_DIR = os.path.dirname(settings_path)
         os.makedirs(CONFIG_DIR, exist_ok=True)

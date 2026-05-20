@@ -100,12 +100,26 @@
 		          rm -rf __pycache__
 		          if [ -L ./python ]; then
       		      rm ./python
-           		fi
+           		  fi
 		          if [ -L ./result ]; then
       		      rm ./result
     		      fi
   	        }
   	        trap cleanup EXIT
+          '';
+        };
+        
+        # Dev shell for taking automated screenshots headlessly
+        devShells.screenshot = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            xorg.xvfb
+            xdotool
+            imagemagick
+            pythonEnv
+          ];
+          shellHook = ''
+            echo "=== kubux-image-manager screenshot shell ==="
+            echo "Run: ./screenshots/screenshot.sh"
           '';
         };
       });
