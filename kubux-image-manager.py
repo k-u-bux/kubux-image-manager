@@ -2910,10 +2910,10 @@ class ImageManager(QMainWindow):
             traceback.print_exc()
 
     def open_image_file(self, file_path):
-        self.open_image([file_path, None, False, True, 0, 0])
+        self.open_image([file_path, None, False, True, 0, 0, 0])
 
     def fullscreen_image_file(self, file_path):
-        self.open_image([file_path, None, True, True, 0, 0])
+        self.open_image([file_path, None, True, True, 0, 0, 0])
 
     def open_image_directory(self, directory_path):
         if self.open_picker_dialogs:
