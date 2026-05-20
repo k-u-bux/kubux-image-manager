@@ -2943,6 +2943,20 @@ class ImageManager(QMainWindow):
 
 
 if __name__ == "__main__":
+    # Parse --settings before QApplication (consumes it from argv)
+    settings_path = None
+    if "--settings" in sys.argv:
+        idx = sys.argv.index("--settings")
+        if idx + 1 < len(sys.argv):
+            settings_path = sys.argv[idx + 1]
+            del sys.argv[idx:idx+2]
+
+    if settings_path:
+        global APP_SETTINGS_FILE, CONFIG_DIR  # noqa: F821
+        APP_SETTINGS_FILE = settings_path
+        CONFIG_DIR = os.path.dirname(settings_path)
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+
     app = QApplication(sys.argv)
     app.setApplicationName("kubux image manager")
     manager = ImageManager()
