@@ -1763,6 +1763,8 @@ class BreadCrumNavigator(QWidget):
         self._press_x = 0
         self._press_y = 0
         self._active_button = None
+        self._elide_max_width = 180  # max pixel width for any segment button
+        self._segment_data = []  # list of (full_path, original_name)
 
         if font is None:
             self.font = get_font(self)
@@ -1777,58 +1779,140 @@ class BreadCrumNavigator(QWidget):
         if not os.path.isdir(path):
             return
         self._current_path = os.path.normpath(path)
-        self._update_breadcrumbs()
+        self._segment_data = []
+        p = self._current_path
+        while len(p) > 1:
+            parent = os.path.dirname(p)
+            name = os.path.basename(p)
+            if name == '':
+                name = os.path.sep
+            self._segment_data.insert(0, (p, name))
+            p = parent
+        self._segment_data.insert(0, (p, "//"))
+        self._reflow()
 
-    def _update_breadcrumbs(self):
+    def resizeEvent(self, event):
+        self._reflow()
+        super().resizeEvent(event)
+
+    def _reflow(self):
+        if not self._segment_data:
+            return
+        avail_width = self.width()
+        fm = QFontMetrics(self.font)
+        if avail_width <= 0:
+            return
+
+        # Strategy 2: elide wide segment names in the middle
+        elided = []  # list of (path, display_text)
+        for path, name in self._segment_data:
+            text_width = fm.horizontalAdvance(name)
+            if text_width > self._elide_max_width:
+                display = fm.elidedText(name, Qt.ElideMiddle, self._elide_max_width)
+            else:
+                display = name
+            elided.append((path, display))
+
+        # Measure total width of all segments + separators
+        def total_width(displays):
+            btn_pad = 10  # approx QPushButton text padding
+            total = 0
+            for i, d in enumerate(displays):
+                total += fm.horizontalAdvance(d) + btn_pad
+                if i > 0:
+                    total += fm.horizontalAdvance("/")
+            return total
+
+        # Strategy 1: drop parents from left until it fits (keep at least last 1)
+        dropped = []  # list of (path, display) removed from left
+        remaining = list(elided)
+        while len(remaining) > 1 and total_width([d for _, d in remaining]) > avail_width:
+            dropped.append(remaining.pop(0))
+
+        # If we dropped segments, add a "…" button at the front showing dropped ancestors
+        show_dots = len(dropped) > 0
+
+        # Rebuild buttons
+        self._rebuild_buttons(remaining, dropped, show_dots)
+
+    def _rebuild_buttons(self, segments, dropped, show_dots):
+        # Clear layout
         while self._layout.count():
             item = self._layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        btn_list = []
-        current_display_path = self._current_path
-        while len(current_display_path) > 1:
-            path = current_display_path
-            current_display_path = os.path.dirname(path)
-            btn_text = os.path.basename(path)
-            if btn_text == '':
-                btn_text = os.path.sep
-            btn = QPushButton(btn_text)
-            btn.setFlat(True)
-            btn.setFont(self.font)
-            btn.setStyleSheet("padding: 0px; margin: 0px;")
-            btn.path = path
-            btn.pressed.connect(lambda b=btn: self._on_button_press(b))
-            btn.released.connect(lambda b=btn: self._on_button_release(b))
-            btn.setContextMenuPolicy(Qt.CustomContextMenu)
-            btn.customContextMenuRequested.connect(lambda pos, b=btn: self._on_button_press_menu(b))
-            btn_list.insert(0, btn)
+        # "…" button for dropped ancestors
+        if show_dots and dropped:
+            dots_btn = QPushButton("…")
+            dots_btn.setFlat(True)
+            dots_btn.setFont(self.font)
+            dots_btn.setStyleSheet("padding: 0px; margin: 0px;")
+            # path = path of deepest dropped ancestor's parent (so menu shows them)
+            dots_btn.path = self._segment_data[0][0]  # root path
+            dots_btn._dropped = dropped
+            dots_btn.setToolTip("Dropped parent directories")
+            dots_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            dots_btn.pressed.connect(lambda: self._on_dots_press(dots_btn))
+            bind_drop(dots_btn, self._handle_drop)
+            bind_right_drop(dots_btn, self._handle_right_drop)
+            self._layout.addWidget(dots_btn)
 
-        btn_text = "//"
-        btn = QPushButton(btn_text)
-        btn.setFlat(True)
-        btn.setFont(self.font)
-        btn.setStyleSheet("padding: 0px; margin: 0px;")
-        btn.path = current_display_path
-        btn.pressed.connect(lambda b=btn: self._on_button_press(b))
-        btn.released.connect(lambda b=btn: self._on_button_release(b))
-        btn_list.insert(0, btn)
-
-        for i, btn in enumerate(btn_list):
-            btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-            bind_drop(btn, self._handle_drop)
-            bind_right_drop(btn, self._handle_right_drop)
-            self._layout.addWidget(btn)
-            if i + 1 < len(btn_list):
+        for i, (path, display) in enumerate(segments):
+            if i > 0 or show_dots:
                 sep = QLabel("/")
                 sep.setFont(self.font)
                 sep.setContentsMargins(0, 0, 0, 0)
                 sep.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
                 self._layout.addWidget(sep)
-            if i == 0:
+
+            btn = QPushButton(display)
+            btn.setFlat(True)
+            btn.setFont(self.font)
+            btn.setStyleSheet("padding: 0px; margin: 0px;")
+            btn.path = path
+            btn.setToolTip(path)
+            btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            btn.pressed.connect(lambda b=btn: self._on_button_press(b))
+            btn.released.connect(lambda b=btn: self._on_button_release(b))
+            btn.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn.customContextMenuRequested.connect(lambda pos, b=btn: self._on_button_press_menu(b))
+            bind_drop(btn, self._handle_drop)
+            bind_right_drop(btn, self._handle_right_drop)
+
+            if i == 0 and not show_dots:
+                # Root ("//") button: single press shows subdirectory menu directly
                 btn.pressed.disconnect()
                 btn.pressed.connect(lambda b=btn: self._on_button_press_menu(b))
+
+            self._layout.addWidget(btn)
+
         self._layout.addStretch(1)
+
+    def _on_dots_press(self, btn):
+        """Show menu of dropped ancestors when '…' is pressed."""
+        dropped_names = [os.path.basename(p) or os.path.sep for p, _ in btn._dropped]
+        btn_pos = btn.mapToGlobal(QPoint(0, btn.height()))
+        menu = LongMenu(
+            btn,
+            default_option=None,
+            other_options=dropped_names,
+            font=self.font,
+            x_pos=btn_pos.x(),
+            y_pos=btn_pos.y(),
+            n_lines=15
+        )
+        menu.exec()
+        selected_name = menu.result
+        if selected_name:
+            # Find the path for the selected name
+            for path, name in btn._dropped:
+                if os.path.basename(path) == selected_name or \
+                   (selected_name == os.path.sep and path == self._segment_data[0][0]):
+                    self._trigger_navigate(path)
+                    return
+            # Fallback: navigate to root
+            self._trigger_navigate(self._segment_data[0][0])
 
     def _handle_drop(self, source_button, target_button):
         # Get the picker (go up hierarchy: BreadCrumNavigator -> _top_frame -> central_widget -> ImagePicker)
