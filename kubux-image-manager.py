@@ -1803,36 +1803,55 @@ class BreadCrumNavigator(QWidget):
         if avail_width <= 0:
             return
 
-        # Strategy 2: elide wide segment names in the middle
-        elided = []  # list of (path, display_text)
+        btn_pad = 10  # approx QPushButton text + padding
+        sep_width = fm.horizontalAdvance("/")
+
+        # Step 1: measure total width of all original (un-elided) segment names
+        def total_width_of(names):
+            total = 0
+            for i, n in enumerate(names):
+                total += fm.horizontalAdvance(n) + btn_pad
+                if i > 0:
+                    total += sep_width
+            return total
+
+        full_names = [name for path, name in self._segment_data]
+        total_needed = total_width_of(full_names)
+
+        # Step 2: if everything fits with no truncation — no elision, no dropping
+        if total_needed <= avail_width:
+            self._rebuild_buttons(list(self._segment_data), [], False)
+            return
+
+        # Step 3: overflow — compute fair budget per segment, elide only those that exceed it
+        per_seg_budget = int((avail_width - len(full_names) * btn_pad - (len(full_names) - 1) * sep_width) / len(full_names))
+        if per_seg_budget < 20:
+            per_seg_budget = 20  # absolute minimum
+
+        elided = []
         for path, name in self._segment_data:
             text_width = fm.horizontalAdvance(name)
-            if text_width > self._elide_max_width:
-                display = fm.elidedText(name, Qt.ElideMiddle, self._elide_max_width)
+            if text_width > per_seg_budget:
+                display = fm.elidedText(name, Qt.ElideMiddle, per_seg_budget)
             else:
                 display = name
             elided.append((path, display))
 
-        # Measure total width of all segments + separators
-        def total_width(displays):
-            btn_pad = 10  # approx QPushButton text padding
+        # Step 4: drop parents from left until it fits (keep at least last 1)
+        def total_width_of_displays(displays):
             total = 0
             for i, d in enumerate(displays):
                 total += fm.horizontalAdvance(d) + btn_pad
                 if i > 0:
-                    total += fm.horizontalAdvance("/")
+                    total += sep_width
             return total
 
-        # Strategy 1: drop parents from left until it fits (keep at least last 1)
-        dropped = []  # list of (path, display) removed from left
+        dropped = []
         remaining = list(elided)
-        while len(remaining) > 1 and total_width([d for _, d in remaining]) > avail_width:
+        while len(remaining) > 1 and total_width_of_displays([d for _, d in remaining]) > avail_width:
             dropped.append(remaining.pop(0))
 
-        # If we dropped segments, add a "…" button at the front showing dropped ancestors
         show_dots = len(dropped) > 0
-
-        # Rebuild buttons
         self._rebuild_buttons(remaining, dropped, show_dots)
 
     def _rebuild_buttons(self, segments, dropped, show_dots):
