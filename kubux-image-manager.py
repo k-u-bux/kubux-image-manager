@@ -1823,16 +1823,47 @@ class BreadCrumNavigator(QWidget):
             self._rebuild_buttons(list(self._segment_data), [], False)
             return
 
-        # Step 3: overflow — compute fair budget per segment, elide only those that exceed it
-        per_seg_budget = int((avail_width - len(full_names) * btn_pad - (len(full_names) - 1) * sep_width) / len(full_names))
-        if per_seg_budget < 20:
-            per_seg_budget = 20  # absolute minimum
+        # Step 3: overflow — iteratively shrink the widest segment just enough to fit
+        # Start with no budget cap (None = unlimited)
+        budgets = {i: None for i in range(len(self._segment_data))}
+        displays = {i: name for i, (_, name) in enumerate(self._segment_data)}
+
+        def total_width_of_budgeted():
+            total = 0
+            for i, (_, name) in enumerate(self._segment_data):
+                b = budgets[i]
+                if b is not None:
+                    w = b
+                else:
+                    w = fm.horizontalAdvance(name)
+                total += w + btn_pad
+                if i > 0:
+                    total += sep_width
+            return total
+
+        while total_width_of_budgeted() > avail_width:
+            # Find the segment that currently has the widest rendered extent
+            current_extents = []
+            for i, (_, name) in enumerate(self._segment_data):
+                b = budgets[i]
+                if b is not None:
+                    w = b
+                else:
+                    w = fm.horizontalAdvance(name)
+                current_extents.append((w, i))
+            current_extents.sort(reverse=True)
+            widest_idx = current_extents[0][1]
+            widest_current = current_extents[0][0]
+
+            # Shrink by one reasonable step (10px), floor 20px
+            new_budget = max(20, widest_current - 10)
+            budgets[widest_idx] = new_budget
 
         elided = []
-        for path, name in self._segment_data:
-            text_width = fm.horizontalAdvance(name)
-            if text_width > per_seg_budget:
-                display = fm.elidedText(name, Qt.ElideMiddle, per_seg_budget)
+        for i, (path, name) in enumerate(self._segment_data):
+            b = budgets[i]
+            if b is not None:
+                display = fm.elidedText(name, Qt.ElideMiddle, b)
             else:
                 display = name
             elided.append((path, display))
