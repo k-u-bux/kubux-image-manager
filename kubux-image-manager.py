@@ -2523,10 +2523,18 @@ class ImagePicker(QMainWindow):
         old_width = event.oldSize().width()
         new_width = event.size().width()
         if old_width != -1 and new_width != old_width:
-            self.sizing_mode = "slider"
-            self.size_menu_button.setText("Size:")
-            self.thumbnail_slider.setValue(self.thumbnail_width)
-            self.thumbnail_slider.setVisible(True)
+            if self.sizing_mode != "slider":
+                col_count = self._gallery_grid.get_current_column_count()
+                available_col_width = self._gallery_grid.compute_width_for_columns(col_count)
+                new_thumbnail_width = max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( available_col_width ) )
+                if new_thumbnail_width == self.thumbnail_width:
+                    self.size_menu_button.setText(f"{actual_cols} columns")
+                    self.thumbnail_slider.setVisible(False)
+                else:
+                    self.sizing_mode = "slider"
+                    self.size_menu_button.setText("Size:")
+                    self.thumbnail_slider.setValue(self.thumbnail_width)
+                    self.thumbnail_slider.setVisible(True)
             
     def wheelEvent(self, event):
         scrollbar = self._gallery_grid.verticalScrollBar()
