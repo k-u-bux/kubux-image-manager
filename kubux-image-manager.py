@@ -2548,7 +2548,7 @@ class ImagePicker(QMainWindow):
         self.update_sizing_mode_timer = QTimer()
         self.update_sizing_mode_timer.setSingleShot(True)
         self.update_sizing_mode_timer.timeout.connect( self.book_sizing_mode )
-        self.update_sizing_mode_timer.start(200)
+        self.update_sizing_mode_timer.start(600)
 
             
     def wheelEvent(self, event):
