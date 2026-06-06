@@ -2528,7 +2528,7 @@ class ImagePicker(QMainWindow):
                 available_col_width = self._gallery_grid.compute_width_for_columns(col_count)
                 new_thumbnail_width = max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( available_col_width ) )
                 if new_thumbnail_width == self.thumbnail_width:
-                    self.size_menu_button.setText(f"{actual_cols} columns")
+                    self.size_menu_button.setText(f"{col_count} columns")
                     self.thumbnail_slider.setVisible(False)
                 else:
                     self.sizing_mode = "slider"
