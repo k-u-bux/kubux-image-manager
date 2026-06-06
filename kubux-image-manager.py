@@ -2512,12 +2512,22 @@ class ImagePicker(QMainWindow):
             self.size_menu_button.setText(f"{actual_cols} columns")
             self.thumbnail_slider.setVisible(False)
 
+    #    def resizeEvent(self, event):
+    #        """Handle window resize - update button label in column mode."""
+    #        super().resizeEvent(event)
+    #        if self.sizing_mode != "slider":
+    #            self._update_sizing_ui()
+            
     def resizeEvent(self, event):
-        """Handle window resize - update button label in column mode."""
         super().resizeEvent(event)
-        if self.sizing_mode != "slider":
-            self._update_sizing_ui()
-
+        old_width = event.oldSize().width()
+        new_width = event.size().width()
+        if old_width != -1 and new_width != old_width:
+            self.sizing_mode = "slider"
+            self.size_menu_button.setText("Size:")
+            self.thumbnail_slider.setValue(self.thumbnail_width)
+            self.thumbnail_slider.setVisible(True)
+            
     def wheelEvent(self, event):
         scrollbar = self._gallery_grid.verticalScrollBar()
         delta = event.angleDelta().y()
