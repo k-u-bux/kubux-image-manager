@@ -2056,6 +2056,8 @@ class ImagePicker(QMainWindow):
         self.list_cmd = picker_info[2]
         self.window_geometry = picker_info[3]
         self.sizing_mode = picker_info[4]
+        self.old_sizing_mode = self.sizing_mode
+        self.update_sizing_mode_timer = None
         self.background_worker = BackgroundWorker(self.image_dir, self.thumbnail_width)
         self.update_thumbnail_job_id = None
         self.watcher = DirectoryWatcher(self)
@@ -2499,6 +2501,7 @@ class ImagePicker(QMainWindow):
             self._do_update_thumbnail_width( new_thumbnail_width )
             self._regrid()
             self._update_sizing_ui()
+        self.old_sizing_mode = self.sizing_mode
 
     def _update_sizing_ui(self):
         """Update button label and slider visibility based on sizing mode."""
@@ -2518,16 +2521,23 @@ class ImagePicker(QMainWindow):
     #        if self.sizing_mode != "slider":
     #            self._update_sizing_ui()
             
+    def book_sizing_mode(self):
+        self.old_sizing_mode = self.sizing_mode
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if self.update_sizing_mode_timer and self.update_sizing_mode_timer.isActive():
+            self.update_sizing_mode_timer.stop()
+            self.update_sizing_mode_timer = None
         old_width = event.oldSize().width()
         new_width = event.size().width()
         if old_width != -1 and new_width != old_width:
-            if self.sizing_mode != "slider":
+            if self.old_sizing_mode != "slider":
                 col_count = self._gallery_grid.get_current_column_count()
                 available_col_width = self._gallery_grid.compute_width_for_columns(col_count)
                 new_thumbnail_width = max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( available_col_width ) )
                 if new_thumbnail_width == self.thumbnail_width:
+                    self.sizing_mode = self.old_sizing_mode
                     self.size_menu_button.setText(f"{col_count} columns")
                     self.thumbnail_slider.setVisible(False)
                 else:
@@ -2535,6 +2545,11 @@ class ImagePicker(QMainWindow):
                     self.size_menu_button.setText("Size:")
                     self.thumbnail_slider.setValue(self.thumbnail_width)
                     self.thumbnail_slider.setVisible(True)
+        self.update_sizing_mode_timer = QTimer()
+        self.update_sizing_mode_timer.setSingleShot(True)
+        self.update_sizing_mode_timer.timeout.connect( self.book_sizing_mode )
+        self.update_sizing_mode_timer.start(200)
+
             
     def wheelEvent(self, event):
         scrollbar = self._gallery_grid.verticalScrollBar()
