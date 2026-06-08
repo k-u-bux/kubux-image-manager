@@ -68,6 +68,8 @@ CACHE_DIR = os.path.join(HOME_DIR, ".cache", "kubux-thumbnail-cache")
 THUMBNAIL_CACHE_ROOT = os.path.join(CACHE_DIR, "thumbnails")
 PICTURES_DIR = os.path.join(HOME_DIR, "Pictures")
 DEFAULT_THUMBNAIL_DIM = 192
+VIEWER_MIN_FRACTION = 0.125
+VIEWER_MAX_FRACTION = 0.50
 APP_SETTINGS_FILE = os.path.join(CONFIG_DIR, "app_settings.json")    
 
 os.makedirs(THUMBNAIL_CACHE_ROOT, exist_ok=True)
@@ -1027,6 +1029,18 @@ class ImageViewer(QMainWindow):
 
         if self.window_geometry is not None:
             self.restoreGeometry(QByteArray.fromBase64(self.window_geometry.encode()))
+        else:
+            # Size to image dimensions, clamped to min/max screen fraction, aspect-preserved
+            ow, oh = self.original_image.size
+            screen = QGuiApplication.primaryScreen().availableGeometry()
+            min_dim = int(screen.width() * VIEWER_MIN_FRACTION)
+            max_dim = int(screen.width() * VIEWER_MAX_FRACTION)
+            # Scale down to max first
+            w, h = calculate_thumbnail_dimensions(ow, oh, max_dim, max_dim)
+            # Then scale up if below min
+            if w < min_dim or h < min_dim:
+                w, h = calculate_thumbnail_dimensions(ow, oh, min_dim, min_dim)
+            self.resize(w, h)
 
         central_widget = QWidget(self)
         self.setCentralWidget(central_widget)
