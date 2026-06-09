@@ -1024,6 +1024,7 @@ class ImageViewer(QMainWindow):
         self.stored_scroll_y = image_info[5]
         self.stored_scroll_x = image_info[6]
         self.source_picker = image_info[7] if len(image_info) > 7 else None
+        self.scroll_area = None
         self.original_image = get_full_size_image(self.image_path)
         self.display_image = None
         self.photo_image = None
@@ -1067,6 +1068,7 @@ class ImageViewer(QMainWindow):
         self.scroll_area.setWidgetResizable(False)
         self.scroll_area.setAlignment(Qt.AlignCenter)
         self.scroll_area.setStyleSheet("background-color: black;")
+        self.scroll_area.installEventFilter(self)
         
         self.canvas = QLabel()
         self.canvas.setAlignment(Qt.AlignCenter)
@@ -1203,6 +1205,13 @@ class ImageViewer(QMainWindow):
     def goto_prev ( self ):
         self.set_image( self.prev_file() )
 
+    def eventFilter(self, obj, event):
+        if obj is self.scroll_area and event.type() == QEvent.KeyPress:
+            if event.key() in (Qt.Key_PageUp, Qt.Key_PageDown):
+                self.keyPressEvent(event)
+                return True
+        return False
+
     def keyPressEvent(self, event):
         key = event.key()
         if key == Qt.Key_Plus or key == Qt.Key_Equal:
@@ -1218,9 +1227,9 @@ class ImageViewer(QMainWindow):
             self.toggle_fullscreen()
         elif key == Qt.Key_Escape:
             self._close()
-        elif key == Qt.Key_N:
+        elif key == Qt.Key_PageDown:
             self.goto_next()
-        elif key == Qt.Key_P:
+        elif key == Qt.Key_PageUp:
             self.goto_prev()
         else:
             super().keyPressEvent(event)
