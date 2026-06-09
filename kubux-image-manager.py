@@ -1023,6 +1023,7 @@ class ImageViewer(QMainWindow):
         self.zoom_factor = image_info[4]
         self.stored_scroll_y = image_info[5]
         self.stored_scroll_x = image_info[6]
+        self.source_picker = image_info[7] if len(image_info) > 7 else None
         self.original_image = get_full_size_image(self.image_path)
         self.display_image = None
         self.photo_image = None
@@ -1108,7 +1109,8 @@ class ImageViewer(QMainWindow):
         geom = self.saveGeometry().toBase64().data().decode()
         scroll_x = self.scroll_area.horizontalScrollBar().value()
         scroll_y = self.scroll_area.verticalScrollBar().value()
-        return self.image_path, geom, self.is_fullscreen, self.fit_to_window, self.zoom_factor, scroll_y, scroll_x
+        picker_id = self.source_picker.picker_id if self.source_picker else None
+        return self.image_path, geom, self.is_fullscreen, self.fit_to_window, self.zoom_factor, scroll_y, scroll_x, picker_id
 
     def set_screen_mode(self, is_fullscreen):
         if is_fullscreen:
@@ -1162,7 +1164,9 @@ class ImageViewer(QMainWindow):
 
 
     def file_list ( self ):
-        return list_image_files_by_command( self.master.list_cmd, self.master.image_dir )
+        if self.source_picker:
+            return list_image_files_by_command(self.source_picker.list_cmd, self.source_picker.image_dir)
+        return []
 
     def next_file ( self ):
         files = self.file_list()
@@ -2837,8 +2841,17 @@ class ImageManager(QMainWindow):
         return self.open_image_info
 
     def open_images_from_info(self):
+        picker_map = {p.picker_id: p for p in self.open_picker_dialogs}
         for image_info in self.open_image_info:
-            self.open_image(image_info)
+            # Rehydrate picker_id (int at index 7) to actual picker object if present
+            if len(image_info) > 7 and isinstance(image_info[7], int):
+                info = list(image_info)
+                info[7] = picker_map.get(image_info[7])
+                self.open_image(tuple(info))
+            elif len(image_info) > 7:
+                self.open_image(image_info)
+            else:
+                self.open_image(image_info)
 
     def _rehydrate_selected_files(self):
         picker_map = {p.picker_id: p for p in self.open_picker_dialogs}
@@ -2978,19 +2991,26 @@ class ImageManager(QMainWindow):
 
     def execute_command_with_args(self, command, args):
         command = expand_env_vars(command)
-        to_do = expand_wildcards(command, args)
+        # Normalize args: can be list[tuple[str, picker]] or list[str]
+        if args and isinstance(args[0], tuple):
+            paths = [a[0] for a in args]
+            picker = next((p for _, p in args if p is not None), None)
+        else:
+            paths = args
+            picker = None
+        to_do = expand_wildcards(command, paths)
         status_change = False
         for cmd in to_do:
             if (files := strip_prefix("Open:", cmd)) is not None:
                 log_action(f"execute as an internal command: Open: {files}")
                 path_list = shlex.split(files)
                 for path in path_list:
-                    self.open_path(path)
+                    self.open_path(path, picker)
             elif (files := strip_prefix("Fullscreen:", cmd)) is not None:
                 log_action(f"execute as an internal command: Fullscreen: {files}")
                 path_list = shlex.split(files)
                 for path in path_list:
-                    self.fullscreen_path(path)
+                    self.fullscreen_path(path, picker)
             elif (files := strip_prefix("SetWP:", cmd)) is not None:
                 log_action(f"execute as an internal command: SetWP: {files}")
                 path_list = shlex.split(files)
@@ -3015,14 +3035,14 @@ class ImageManager(QMainWindow):
             self.broadcast_selection_change()
 
     def execute_command(self, command):
-        self.execute_command_with_args(command, [entry[0] for entry in self.selected_files])
+        self.execute_command_with_args(command, self.selected_files)
 
     def execute_current_command(self):
         self.sanitize_selected_files()
         self.execute_command(self.command_field.current_command())
 
     def execute_current_command_with_args(self, args):
-        self.execute_command_with_args(self.command_field.current_command(), args)
+        self.execute_command_with_args(self.command_field.current_command(), [(a, None) for a in args])
 
     def broadcast_selection_change(self):
         self.sanitize_selected_files()
@@ -3122,32 +3142,38 @@ class ImageManager(QMainWindow):
     def close_app(self):
         self.close()
 
-    def fullscreen_path(self, path):
+    def fullscreen_path(self, path, source_picker=None):
         try:
             if os.path.isfile(path):
-                self.fullscreen_image_file(path)
+                self.fullscreen_image_file(path, source_picker)
                 return
         except Exception as e:
             log_error(f"path {path} has problems, message: {e}")
             traceback.print_exc()
 
-    def open_path(self, path):
+    def open_path(self, path, source_picker=None):
         try:
             if os.path.isdir(path):
                 self.open_image_directory(path)
                 return
             if os.path.isfile(path):
-                self.open_image_file(path)
+                self.open_image_file(path, source_picker)
                 return
         except Exception as e:
             log_error(f"path {path} has problems, message: {e}")
             traceback.print_exc()
 
-    def open_image_file(self, file_path):
-        self.open_image([file_path, None, False, True, 0, 0, 0])
+    def open_image_file(self, file_path, source_picker=None):
+        image_info = [file_path, None, False, True, 0, 0, 0]
+        if source_picker:
+            image_info.append(source_picker)
+        self.open_image(image_info)
 
-    def fullscreen_image_file(self, file_path):
-        self.open_image([file_path, None, True, True, 0, 0, 0])
+    def fullscreen_image_file(self, file_path, source_picker=None):
+        image_info = [file_path, None, True, True, 0, 0, 0]
+        if source_picker:
+            image_info.append(source_picker)
+        self.open_image(image_info)
 
     def open_image_directory(self, directory_path):
         if self.open_picker_dialogs:
