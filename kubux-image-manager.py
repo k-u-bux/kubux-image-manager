@@ -1165,11 +1165,13 @@ class ImageViewer(QMainWindow):
 
     def file_list ( self ):
         if self.source_picker:
-            return list_image_files_by_command(self.source_picker.list_cmd, self.source_picker.image_dir)
+            return list_image_files_by_command(self.source_picker.image_dir, self.source_picker.list_cmd)
         return []
 
     def next_file ( self ):
         files = self.file_list()
+        if self.image_path not in files:
+            return None
         index = files.index( self.image_path ) + 1
         if index < len( files ):
             return files[ index ]
@@ -1177,13 +1179,14 @@ class ImageViewer(QMainWindow):
         
     def prev_file ( self ):
         files = self.file_list()
+        if self.image_path not in files:
+            return None
         index = files.index( self.image_path ) - 1
         if index >= 0:
             return files[ index ]
         return None
  
     def set_image ( self, path ):
-        print("hello")
         if path:
             self.image_path = path
             self.file_name = os.path.basename(self.image_path)
@@ -1192,14 +1195,12 @@ class ImageViewer(QMainWindow):
             self.display_image = None
             self.photo_image = None
             self._update_title()
-            self._upate_image()
+            self._update_image()
 
     def goto_next ( self ):
-        print("hello")
         self.set_image( self.next_file() )
 
     def goto_prev ( self ):
-        print("hello")
         self.set_image( self.prev_file() )
 
     def keyPressEvent(self, event):
@@ -1347,6 +1348,7 @@ class ThumbnailButton(QPushButton):
         self.item_border_width = item_border_width
         self.cache_key = None
         self.qt_image = None
+        self._double_click_handler = None
         self.setCursor(Qt.PointingHandCursor)
         self.setStyleSheet(f"padding: 0px; margin: 0px; border: {self.item_border_width}px solid transparent;")
         
@@ -1357,6 +1359,13 @@ class ThumbnailButton(QPushButton):
         icon_size = QSize(self.width() - 2 * self.item_border_width, 
                          self.height() - 2 * self.item_border_width)
         self.setIconSize(icon_size)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton and self._double_click_handler:
+            self._double_click_handler()
+            event.accept()
+        else:
+            super().mouseDoubleClickEvent(event)
 
 
 class DirectoryThumbnailGrid:
@@ -2385,8 +2394,8 @@ class ImagePicker(QMainWindow):
         self.master.move_file_to_directory(source_button.img_path, target_dir)
 
     def _exec_cmd_for_image(self, button):
-        args = [button.img_path]
-        self.master.execute_current_command_with_args(args)
+        args = [(button.img_path, self)]
+        self.master.execute_command_with_args(self.master.command_field.current_command(), args)
 
     def _static_configure_picker_button(self, btn, img_path):
         pass
@@ -2409,7 +2418,7 @@ class ImagePicker(QMainWindow):
         context_menu.exec()
         command = context_menu.result
         if command:
-            args = [btn.img_path]
+            args = [(btn.img_path, self)]
             self.master.execute_command_with_args(command, args)
 
     def _dynamic_configure_picker_button(self, btn, img_path):
@@ -2422,6 +2431,7 @@ class ImagePicker(QMainWindow):
             bind_click_or_drag(btn, self._make_ghost, self._toggle_selection, self)
             bind_right_click_or_drag(btn, self._make_right_ghost, self._open_right_click_context_menu, self, 
                                      shift_click_handler=self._exec_cmd_for_image)
+            btn._double_click_handler = lambda: self.master.open_image_file(btn.img_path, self)
             btn._drag_connected = True
         
         if any(img_path == entry[0] for entry in self.master.selected_files):
@@ -2451,7 +2461,7 @@ class ImagePicker(QMainWindow):
             self.master.unselect_file(file)
 
     def _on_apply(self):
-        files = self.master.selected_files_in_directory(self.image_dir)
+        files = [(f, p) for f, p in self.master.selected_files if is_file_in_dir(f, self.image_dir)]
         options = self.master.command_field.current_cmd_list()
         btn_pos = self.apply_btn.mapToGlobal(QPoint(0, 0))
         context_menu = LongMenu(
