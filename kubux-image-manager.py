@@ -1160,6 +1160,44 @@ class ImageViewer(QMainWindow):
         self.canvas.setPixmap(pixmap)
         self.canvas.resize(pixmap.size())
 
+
+    def file_list ( self ):
+        return list_image_files_by_command( self.master.list_cmd, self.master.image_dir )
+
+    def next_file ( self ):
+        files = self.file_list()
+        index = files.index( self.image_path ) + 1
+        if index < len( files ):
+            return files[ index ]
+        return None
+        
+    def prev_file ( self ):
+        files = self.file_list()
+        index = files.index( self.image_path ) - 1
+        if index >= 0:
+            return files[ index ]
+        return None
+ 
+    def set_image ( self, path ):
+        print("hello")
+        if path:
+            self.image_path = path
+            self.file_name = os.path.basename(self.image_path)
+            self.dir_name = os.path.dirname(self.image_path)
+            self.original_image = get_full_size_image(self.image_path)
+            self.display_image = None
+            self.photo_image = None
+            self._update_title()
+            self._upate_image()
+
+    def goto_next ( self ):
+        print("hello")
+        self.set_image( self.next_file() )
+
+    def goto_prev ( self ):
+        print("hello")
+        self.set_image( self.prev_file() )
+
     def keyPressEvent(self, event):
         key = event.key()
         if key == Qt.Key_Plus or key == Qt.Key_Equal:
@@ -1175,6 +1213,10 @@ class ImageViewer(QMainWindow):
             self.toggle_fullscreen()
         elif key == Qt.Key_Escape:
             self._close()
+        elif key == Qt.Key_N:
+            self.goto_next()
+        elif key == Qt.Key_P:
+            self.goto_prev()
         else:
             super().keyPressEvent(event)
 
