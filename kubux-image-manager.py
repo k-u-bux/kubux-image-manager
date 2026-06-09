@@ -2388,7 +2388,7 @@ class ImagePicker(QMainWindow):
         pass
 
     def _toggle_selection(self, btn):
-        self.master.toggle_selection(btn.img_path)
+        self.master.toggle_selection(btn.img_path, self)
 
     def _open_right_click_context_menu(self, btn):
         options = self.master.command_field.current_cmd_list()
@@ -2420,7 +2420,7 @@ class ImagePicker(QMainWindow):
                                      shift_click_handler=self._exec_cmd_for_image)
             btn._drag_connected = True
         
-        if img_path in self.master.selected_files:
+        if any(img_path == entry[0] for entry in self.master.selected_files):
             btn.setStyleSheet(f"padding: 0px; margin: 0px; border: {btn.item_border_width}px solid blue;")
         else:
             btn.setStyleSheet(f"padding: 0px; margin: 0px; border: {btn.item_border_width}px solid transparent;")
@@ -2439,7 +2439,7 @@ class ImagePicker(QMainWindow):
     def _on_select(self):
         all_files = list_image_files_by_command(self.image_dir, self.list_cmd)
         for file in all_files:
-            self.master.select_file(file)
+            self.master.select_file(file, self)
 
     def _on_deselect(self):
         all_files = list_image_files_by_command(self.image_dir, self.list_cmd)
@@ -2804,9 +2804,11 @@ class ImageManager(QMainWindow):
         else:
             self.resize(300, 400)
         
+        self._next_picker_id = 0
         self._create_widgets()
         self.open_picker_dialogs = []
         self.open_picker_dialogs_from_info()
+        self._rehydrate_selected_files()
         self.open_images = []
         self.open_images_from_info()
         self.command_field._set_index(self.current_index)
@@ -2824,6 +2826,8 @@ class ImageManager(QMainWindow):
 
     def open_picker_dialog(self, picker_info):
         dummy = ImagePicker(self, picker_info)
+        dummy.picker_id = self._next_picker_id
+        self._next_picker_id += 1
         self.open_picker_dialogs.append(dummy)
 
     def collect_open_image_info(self):
@@ -2835,6 +2839,14 @@ class ImageManager(QMainWindow):
     def open_images_from_info(self):
         for image_info in self.open_image_info:
             self.open_image(image_info)
+
+    def _rehydrate_selected_files(self):
+        picker_map = {p.picker_id: p for p in self.open_picker_dialogs}
+        self.selected_files = [
+            (path, picker_map.get(pid)) if isinstance(pid, int) and pid != -1
+            else (path, None)
+            for path, pid in self.selected_files
+        ]
 
     def open_image(self, image_info):
         dummy = ImageViewer(self, image_info)
@@ -2855,7 +2867,8 @@ class ImageManager(QMainWindow):
         self.main_win_geometry = self.app_settings.get("main_win_geometry", None)
         self.commands = self.app_settings.get("commands", "Open: {*}\nFullscreen: {*}\nSetWP: *\nOpen: ${HOME}/Pictures")
         self.current_index = int(self.app_settings.get("current_index", 1))
-        self.selected_files = self.app_settings.get("selected_files", [])
+        raw = self.app_settings.get("selected_files", [])
+        self.selected_files = [(path, pid) for path, pid in raw]
         self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider", 0 ])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
         self.open_image_info = self.app_settings.get("open_image_info", [])
@@ -2869,7 +2882,10 @@ class ImageManager(QMainWindow):
             self.app_settings["main_win_geometry"] = self.saveGeometry().toBase64().data().decode()
             self.app_settings["commands"] = self.command_field.current_text().rstrip('\n')
             self.app_settings["current_index"] = self.command_field._current_index()
-            self.app_settings["selected_files"] = self.selected_files
+            self.app_settings["selected_files"] = [
+                [path, picker.picker_id if picker else -1]
+                for path, picker in self.selected_files
+            ]
             self.app_settings["new_picker_info"] = self.new_picker_info
             self.app_settings["open_picker_info"] = self.collect_open_picker_info()
             self.app_settings["open_image_info"] = self.collect_open_image_info()
@@ -2935,31 +2951,30 @@ class ImageManager(QMainWindow):
     def move_file_to_directory(self, file_path, target_dir):
         new_path = move_file_to_directory(file_path, target_dir)
         if new_path:
-            if file_path in self.selected_files:
+            existing = [(f, p) for f, p in self.selected_files if f == file_path]
+            if existing:
+                _, picker = existing[0]
                 self.unselect_file(file_path)
-                self.select_file(new_path)
+                self.select_file(new_path, picker)
             self.broadcast_contents_change()
 
     def selected_files_in_directory(self, directory):
-        return [file for file in self.selected_files if is_file_in_dir(file, directory)]
+        return [f for f, _ in self.selected_files if is_file_in_dir(f, directory)]
 
     def move_selected_files_to_directory(self, file_path, target_dir):
         source_dir = os.path.realpath(os.path.dirname(file_path))
         old_selected = self.selected_files
         self.selected_files = []
-        for file in old_selected:
+        for file, picker in old_selected:
             if is_file_in_dir(file, source_dir):
                 new_path = move_file_to_directory(file, target_dir)
-                if new_path:
-                    self.selected_files.append(new_path)
-                else:
-                    self.selected_files.append(file)
+                self.selected_files.append((new_path or file, picker))
             else:
-                self.selected_files.append(file)
+                self.selected_files.append((file, picker))
         self.broadcast_contents_change()
 
     def sanitize_selected_files(self):
-        self.selected_files[:] = [path for path in self.selected_files if os.path.exists(path)]
+        self.selected_files = [(f, p) for f, p in self.selected_files if os.path.exists(f)]
 
     def execute_command_with_args(self, command, args):
         command = expand_env_vars(command)
@@ -3000,7 +3015,7 @@ class ImageManager(QMainWindow):
             self.broadcast_selection_change()
 
     def execute_command(self, command):
-        self.execute_command_with_args(command, self.selected_files)
+        self.execute_command_with_args(command, [entry[0] for entry in self.selected_files])
 
     def execute_current_command(self):
         self.sanitize_selected_files()
@@ -3054,15 +3069,12 @@ class ImageManager(QMainWindow):
             log_debug(f"something has happened: {e}")
         watch_for_changes = old_value
 
-    def select_file(self, path):
-        self.selected_files.append(path)
+    def select_file(self, path, source_picker=None):
+        self.selected_files.append((path, source_picker))
         self.broadcast_selection_change()
 
     def unselect_file(self, path):
-        try:
-            self.selected_files.remove(path)
-        except Exception:
-            pass
+        self.selected_files = [(f, p) for f, p in self.selected_files if f != path]
         self.broadcast_selection_change()
 
     def _do_update_ui_scale(self, scale_factor):
@@ -3094,11 +3106,11 @@ class ImageManager(QMainWindow):
         self.selected_files = []
         self.broadcast_selection_change()
 
-    def toggle_selection(self, file):
-        if file in self.selected_files:
+    def toggle_selection(self, file, source_picker=None):
+        if any(file == entry[0] for entry in self.selected_files):
             self.unselect_file(file)
         else:
-            self.select_file(file)
+            self.select_file(file, source_picker)
         self.update_button_status()
 
     def update_button_status(self):
