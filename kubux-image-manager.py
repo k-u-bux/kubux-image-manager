@@ -2502,7 +2502,7 @@ class ImagePicker(QMainWindow):
         context_menu.exec()
         command = context_menu.result
         if command:
-            args = [btn.img_path]
+            args = [(btn.img_path, self)]
             self.master.execute_command_with_args(command, args)
 
     def _browse_directory(self, path):
@@ -3010,26 +3010,16 @@ class ImageManager(QMainWindow):
 
     def execute_command_with_args(self, command, args):
         command = expand_env_vars(command)
-        # Normalize args: can be list[tuple[str, picker]] or list[str]
-        if args and isinstance(args[0], tuple):
-            paths = [a[0] for a in args]
-            picker = next((p for _, p in args if p is not None), None)
-        else:
-            paths = args
-            picker = None
+        paths = [a[0] for a in args]
         to_do = expand_wildcards(command, paths)
         status_change = False
-        for cmd in to_do:
-            if (files := strip_prefix("Open:", cmd)) is not None:
-                log_action(f"execute as an internal command: Open: {files}")
-                path_list = shlex.split(files)
-                for path in path_list:
-                    self.open_path(path, picker)
-            elif (files := strip_prefix("Fullscreen:", cmd)) is not None:
-                log_action(f"execute as an internal command: Fullscreen: {files}")
-                path_list = shlex.split(files)
-                for path in path_list:
-                    self.fullscreen_path(path, picker)
+        for cmd, (path, picker) in zip(to_do, args):
+            if strip_prefix("Open:", cmd) is not None:
+                log_action(f"execute as an internal command: Open: {path}")
+                self.open_path(path, picker)
+            elif strip_prefix("Fullscreen:", cmd) is not None:
+                log_action(f"execute as an internal command: Fullscreen: {path}")
+                self.fullscreen_path(path, picker)
             elif (files := strip_prefix("SetWP:", cmd)) is not None:
                 log_action(f"execute as an internal command: SetWP: {files}")
                 path_list = shlex.split(files)
