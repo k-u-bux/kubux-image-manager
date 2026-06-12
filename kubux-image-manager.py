@@ -3004,14 +3004,19 @@ class ImageManager(QMainWindow):
         command = expand_env_vars(command)
         paths = [a[0] for a in args]
         to_do = expand_wildcards(command, paths)
+        picker_map = {a[0]: (a[1], a[2]) for a in args}
         status_change = False
-        for cmd, (path, picker_dir, picker_cmd) in zip(to_do, args):
-            if strip_prefix("Open:", cmd) is not None:
-                log_action(f"execute as an internal command: Open: {path}")
-                self.open_path(path, picker_dir, picker_cmd)
-            elif strip_prefix("Fullscreen:", cmd) is not None:
-                log_action(f"execute as an internal command: Fullscreen: {path}")
-                self.fullscreen_path(path, picker_dir, picker_cmd)
+        for cmd in to_do:
+            if (files := strip_prefix("Open:", cmd)) is not None:
+                log_action(f"execute as an internal command: Open: {files}")
+                for path in shlex.split(files):
+                    picker_dir, picker_cmd = picker_map.get(path, (None, None))
+                    self.open_path(path, picker_dir, picker_cmd)
+            elif (files := strip_prefix("Fullscreen:", cmd)) is not None:
+                log_action(f"execute as an internal command: Fullscreen: {files}")
+                for path in shlex.split(files):
+                    picker_dir, picker_cmd = picker_map.get(path, (None, None))
+                    self.fullscreen_path(path, picker_dir, picker_cmd)
             elif (files := strip_prefix("SetWP:", cmd)) is not None:
                 log_action(f"execute as an internal command: SetWP: {files}")
                 path_list = shlex.split(files)
