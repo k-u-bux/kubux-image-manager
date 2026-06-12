@@ -1210,6 +1210,23 @@ class ImageViewer(QMainWindow):
     def goto_prev ( self ):
         self.set_image( self.prev_file() )
 
+    def contextMenuEvent(self, event):
+        options = self.master.command_field.current_cmd_list()
+        menu = LongMenu(
+            self,
+            default_option=None,
+            other_options=options,
+            font=get_font(self),
+            x_pos=QCursor.pos().x(),
+            y_pos=QCursor.pos().y(),
+            pos="bottom"
+        )
+        menu.exec()
+        command = menu.result
+        if command:
+            args = [(self.image_path, self.picker_dir, self.picker_cmd)]
+            self.master.execute_command_with_args(command, args)
+
     def eventFilter(self, obj, event):
         if obj is self.scroll_area and event.type() == QEvent.KeyPress:
             if event.key() in (Qt.Key_PageUp, Qt.Key_PageDown):
