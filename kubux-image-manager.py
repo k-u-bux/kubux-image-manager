@@ -279,6 +279,12 @@ def move_file_to_directory(file_path, target_dir_path):
 
 # --- helper ---
 
+def col_count_text( n_cols ):
+    if n_cols == 1:
+        return "1 column"
+    else:
+        return f"{n_cols} columns"
+
 def interleaved_range(start, middle, end):
     result = [middle]
     
@@ -2564,7 +2570,7 @@ class ImagePicker(QMainWindow):
         options = ["slider"]
         column_options = [1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 16, 20, 24]
         for col_count in column_options:
-            options.append(f"{col_count} columns")
+            options.append( col_count_text( col_count ) )
         
         btn_pos = self.size_menu_button.mapToGlobal(QPoint(0, 0))
         menu = LongMenu(
@@ -2593,9 +2599,9 @@ class ImagePicker(QMainWindow):
         if selection == "slider":
             self.sizing_mode = "slider"
             self._update_sizing_ui()
-        elif selection and "columns" in selection:
+        elif selection and "column" in selection:
             col_count = int(selection.split()[0])
-            self.sizing_mode = f"{col_count} columns"
+            self.sizing_mode = col_count_text( col_count )
             # Compute width for this column count
             available_col_width = self._gallery_grid.compute_width_for_columns(col_count)
             new_thumbnail_width = max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( available_col_width ) )
@@ -2613,7 +2619,7 @@ class ImagePicker(QMainWindow):
         else:
             # In column mode, show actual column count
             actual_cols = self._gallery_grid.get_current_column_count()
-            self.size_menu_button.setText(f"{actual_cols} columns")
+            self.size_menu_button.setText( col_count_text( actual_cols ) )
             self.thumbnail_slider.setVisible(False)
 
     #    def resizeEvent(self, event):
@@ -2639,7 +2645,7 @@ class ImagePicker(QMainWindow):
                 new_thumbnail_width = max( MIN_THUMBNAIL_SIZE, self.floor_thumbnail_width( available_col_width ) )
                 if new_thumbnail_width == self.thumbnail_width:
                     self.sizing_mode = self.old_sizing_mode
-                    self.size_menu_button.setText(f"{col_count} columns")
+                    self.size_menu_button.setText( col_count_text( col_count ) )
                     self.thumbnail_slider.setVisible(False)
                 else:
                     self.sizing_mode = "slider"
