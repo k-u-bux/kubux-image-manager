@@ -1207,6 +1207,9 @@ class ImageViewer(QMainWindow):
             self.original_image = get_full_size_image(self.image_path)
             self.display_image = None
             self.photo_image = None
+            ow, oh = self.original_image.size
+            self.filename_widget.set_info( f"{ow}x{oh}" )
+            self.filename_widget.set_text( self.file_name )
             self._update_title()
             self._update_image()
 
