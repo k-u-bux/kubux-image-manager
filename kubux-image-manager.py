@@ -1373,11 +1373,13 @@ class ImageViewer(QMainWindow):
         if self.is_fullscreen:
             self.toggle_fullscreen()
         self.master.open_images.remove(self)
+        self.master._check_ephemeral_exit()
         self.close()
 
     def closeEvent(self, event):
         if self in self.master.open_images:
             self.master.open_images.remove(self)
+            self.master._check_ephemeral_exit()
         event.accept()
 
 
@@ -2488,6 +2490,7 @@ class ImagePicker(QMainWindow):
         self._cache_timer.stop()
         self._gallery_grid.shutdown()
         self.master.open_picker_dialogs.remove(self)
+        self.master._check_ephemeral_exit()
         self.close()
 
     def _on_select(self):
@@ -2690,6 +2693,7 @@ class ImagePicker(QMainWindow):
             self.watcher.stop_watching()
             self._cache_timer.stop()
             self.master.open_picker_dialogs.remove(self)
+            self.master._check_ephemeral_exit()
         event.accept()
 
     def suspendWatcher(self):
@@ -2841,9 +2845,10 @@ def expand_wildcards(command_line, selected_files):
 # --- main ---
 
 class ImageManager(QMainWindow):
-    def __init__(self):
+    def __init__(self, ephemeral_path=None):
         super().__init__()
         self.setWindowTitle("kubux image manager")
+        self.ephemeral = ephemeral_path is not None
         self._load_app_settings()
         font_name, font_size = get_linux_system_ui_font_info()
         self.regrid_job = None
@@ -2860,11 +2865,27 @@ class ImageManager(QMainWindow):
         
         self._create_widgets()
         self.open_picker_dialogs = []
-        self.open_picker_dialogs_from_info()
         self.open_images = []
-        self.open_images_from_info()
+        
+        if self.ephemeral:
+            # Ephemeral session: restore settings but not open windows
+            self.open_picker_info = []
+            self.open_image_info = []
+            self.current_index = 1
+        else:
+            self.open_picker_dialogs_from_info()
+            self.open_images_from_info()
+        
         self.command_field._set_index(self.current_index)
-        self.show()
+        if self.ephemeral and ephemeral_path:
+            if os.path.isfile(ephemeral_path):
+                # For files, ambient dir is the file's parent directory
+                ambient_dir = os.path.dirname(os.path.abspath(ephemeral_path))
+                self.open_path(ephemeral_path, ambient_dir, self.new_picker_info[2])
+            else:
+                self.open_path(ephemeral_path, self.new_picker_info[1], self.new_picker_info[2])
+        if not self.ephemeral:
+            self.show()
 
     def collect_open_picker_info(self):
         self.open_picker_info = []
@@ -3125,6 +3146,10 @@ class ImageManager(QMainWindow):
         self.selected_files.append((path, picker_dir, picker_cmd))
         self.broadcast_selection_change()
 
+    def _check_ephemeral_exit(self):
+        if self.ephemeral and not self.open_picker_dialogs and not self.open_images:
+            QApplication.quit()
+
     def unselect_file(self, path):
         self.selected_files = [(f, d, c) for f, d, c in self.selected_files if f != path]
         self.broadcast_selection_change()
@@ -3225,7 +3250,8 @@ class ImageManager(QMainWindow):
             log_error(f"path {path} has problems, message: {e}")
 
     def closeEvent(self, event):
-        self._save_app_settings()
+        if not self.ephemeral:
+            self._save_app_settings()
         for picker in list(self.open_picker_dialogs):
             picker._on_close()
         event.accept()
@@ -3245,7 +3271,13 @@ if __name__ == "__main__":
         CONFIG_DIR = os.path.dirname(settings_path)
         os.makedirs(CONFIG_DIR, exist_ok=True)
 
+    # Check for positional path argument (ephemeral session)
+    ephemeral_path = None
+    if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
+        ephemeral_path = sys.argv[1]
+        del sys.argv[1]
+
     app = QApplication(sys.argv)
     app.setApplicationName("kubux image manager")
-    manager = ImageManager()
+    manager = ImageManager(ephemeral_path)
     sys.exit(app.exec())
