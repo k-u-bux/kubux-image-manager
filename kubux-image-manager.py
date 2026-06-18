@@ -2879,6 +2879,7 @@ class ImageManager(QMainWindow):
         
         if self.ephemeral:
             # Ephemeral session: restore settings but not open windows
+            self.ephemeral_path = os.path.normpath( self.ephemeral_path )
             self.open_picker_info = []
             self.open_image_info = []
             self.current_index = 1
