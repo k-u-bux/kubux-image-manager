@@ -2888,9 +2888,9 @@ class ImageManager(QMainWindow):
         
         self.command_field._set_index(self.current_index)
         if self.ephemeral:
+            ephemeral_path = os.path.abspath( ephemeral_path )
             if os.path.isfile(ephemeral_path):
                 # For files, ambient dir is the file's parent directory
-                ephemeral_path = os.path.abspath( ephemeral_path )
                 ambient_dir = os.path.dirname( ephemeral_path )
                 self.open_path(ephemeral_path, ambient_dir, self.new_picker_info[2])
             else:
