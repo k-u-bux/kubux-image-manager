@@ -2879,7 +2879,6 @@ class ImageManager(QMainWindow):
         
         if self.ephemeral:
             # Ephemeral session: restore settings but not open windows
-            self.ephemeral_path = os.path.normpath( self.ephemeral_path )
             self.open_picker_info = []
             self.open_image_info = []
             self.current_index = 1
@@ -2891,6 +2890,7 @@ class ImageManager(QMainWindow):
         if self.ephemeral:
             if os.path.isfile(ephemeral_path):
                 # For files, ambient dir is the file's parent directory
+                ephemeral_path = os.path.normpath( ephemeral_path )
                 ambient_dir = os.path.dirname(os.path.abspath(ephemeral_path))
                 self.open_path(ephemeral_path, ambient_dir, self.new_picker_info[2])
             else:
