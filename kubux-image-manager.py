@@ -2890,8 +2890,8 @@ class ImageManager(QMainWindow):
         if self.ephemeral:
             if os.path.isfile(ephemeral_path):
                 # For files, ambient dir is the file's parent directory
-                ephemeral_path = os.path.normpath( ephemeral_path )
-                ambient_dir = os.path.dirname(os.path.abspath(ephemeral_path))
+                ephemeral_path = os.path.abspath( ephemeral_path )
+                ambient_dir = os.path.dirname( ephemeral_path )
                 self.open_path(ephemeral_path, ambient_dir, self.new_picker_info[2])
             else:
                 self.open_path(ephemeral_path, self.new_picker_info[1], self.new_picker_info[2])
