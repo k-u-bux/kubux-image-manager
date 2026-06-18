@@ -208,7 +208,9 @@ def prepend_or_move_to_front(entry, the_list):
 def is_file_below_dir(file_path, dir_path):
     file_dir_path = os.path.realpath(os.path.dirname(file_path))
     dir_path = os.path.realpath(dir_path)
-    return file_dir_path.startswith(dir_path)
+    if dir_path == file_dir_path:
+        return True
+    return os.path.commonpath([dir_path, file_dir_path]) == dir_path
 
 def is_file_in_dir(file_path, dir_path):
     file_dir_path = os.path.realpath(os.path.dirname(file_path))
@@ -217,6 +219,7 @@ def is_file_in_dir(file_path, dir_path):
     
 def execute_shell_command(command):
     result = subprocess.run(command, shell=True)
+    return result
 
 def execute_shell_command_with_capture(command):
     result = subprocess.run(command, shell=True, capture_output=True, text=True)
@@ -306,6 +309,19 @@ def interleaved_range(start, middle, end):
 # --- watch directory ---
 
 watch_for_changes = True
+_watch_lock = threading.Lock()
+
+
+def get_watch_for_changes():
+    with _watch_lock:
+        return watch_for_changes
+
+
+def set_watch_for_changes(value):
+    global watch_for_changes
+    with _watch_lock:
+        watch_for_changes = value
+
 
 class DirectoryEventHandler(QObject, FileSystemEventHandler):
     """Event handler for watchdog that emits a Qt signal when directory changes.
@@ -331,7 +347,7 @@ class DirectoryEventHandler(QObject, FileSystemEventHandler):
         # on the main thread via Qt's event loop
         if isinstance(event, (FileOpenedEvent, FileClosedNoWriteEvent)):
             return       
-        if watch_for_changes:
+        if get_watch_for_changes():
             log_debug(f"directory {self.directory} has changed: {event}")
             self.directory_changed.emit()
 
@@ -443,6 +459,7 @@ def get_full_size_image(img_path):
             return PIL_CACHE[cache_key]
     try:
         full_image = Image.open(img_path)
+        full_image.load()
         with CACHE_LOCK:
             PIL_CACHE[cache_key] = full_image
             if len(PIL_CACHE) > CACHE_SIZE:
@@ -714,7 +731,7 @@ class BackgroundWorker:
                 else:
                     break
             while self.keep_running and (old_size == self.current_size) and (old_directory == self.current_dir):
-                time.sleep(2)
+                self.block.wait(2)
 
     def __init__(self, path, width):
         self.keep_running = True
@@ -802,7 +819,7 @@ class DragController(QObject):
         self.drag_start_y = QCursor.pos().y()
         self.dragging_widget = self.source_widget
         self.dragging = False
-        self.drag_start_timer = QTimer()
+        self.drag_start_timer = QTimer(self)
         self.drag_start_timer.setSingleShot(True)
         self.drag_start_timer.timeout.connect(self.start_drag)
         self.drag_start_timer.start(DRAG_DELAY_MS)
@@ -951,6 +968,31 @@ def get_font(widget):
     if hasattr(widget, 'main_font'):
         return widget.main_font
     return get_linux_ui_font()
+
+
+def resolve_target_dir(target_widget, fallback=None):
+    """Resolve the target directory for a drag-drop target widget.
+
+    Checks for a 'path' attribute (breadcrumb buttons) or an 'image_dir'
+    attribute (pickers / scroll areas); falls back to the provided fallback.
+    """
+    if hasattr(target_widget, 'path'):
+        return target_widget.path
+    if hasattr(target_widget, 'image_dir'):
+        return target_widget.image_dir
+    return fallback
+
+
+def make_debounced_timer(parent, delay, slot):
+    """Create a single-shot QTimer owned by parent, connected to slot, started after delay ms.
+
+    Returns the timer; callers should store it (e.g. on self) to replace on each call.
+    """
+    timer = QTimer(parent)
+    timer.setSingleShot(True)
+    timer.timeout.connect(slot)
+    timer.start(delay)
+    return timer
 
 
 # --- widgets ---
@@ -1301,61 +1343,44 @@ class ImageViewer(QMainWindow):
             self._update_image()
         super().resizeEvent(event)
 
-    def _zoom_in(self, x=None, y=None):
+    def _zoom(self, factor, x=None, y=None):
+        """Apply a zoom factor, optionally keeping (x, y) centered.
+
+        x and y are image coordinates (position within the QLabel which is sized
+        to the image). Qt gives us image coords directly; no scroll offset needed.
+        """
         self.fit_to_window = False
-        self.zoom_factor *= 1.25
-        
+        self.zoom_factor *= factor
+
         if x is not None and y is not None:
-            # x is already the image coordinate (position within QLabel which is sized to image)
-            # No need to add scroll offset like tkinter's canvasx() - Qt gives us image coords directly
             x_fraction = x / self.display_image.width
             y_fraction = y / self.display_image.height
-            
+
         self._update_image()
-        
+
         if x is not None and y is not None:
             h_bar = self.scroll_area.horizontalScrollBar()
             v_bar = self.scroll_area.verticalScrollBar()
-            
+
             new_x = x_fraction * self.display_image.width
             new_y = y_fraction * self.display_image.height
-            
+
             canvas_width = self.scroll_area.viewport().width()
             canvas_height = self.scroll_area.viewport().height()
-            
+
             # Center the view on the point new_x, new_y
             h_bar.setValue(int(max(0, new_x - canvas_width / 2)))
             v_bar.setValue(int(max(0, new_y - canvas_height / 2)))
 
+    def _zoom_in(self, x=None, y=None):
+        self._zoom(1.25, x, y)
+
     def _zoom_out(self, x=None, y=None):
-        self.fit_to_window = False
-        self.zoom_factor /= 1.25
+        self._zoom(1 / 1.25, x, y)
         min_zoom = 0.1
         if self.zoom_factor < min_zoom:
             self.fit_to_window = True
             self._update_image()
-            return
-            
-        if x is not None and y is not None:
-            # x is already the image coordinate (position within QLabel which is sized to image)
-            x_fraction = x / self.display_image.width
-            y_fraction = y / self.display_image.height
-            
-        self._update_image()
-        
-        if x is not None and y is not None:
-            h_bar = self.scroll_area.horizontalScrollBar()
-            v_bar = self.scroll_area.verticalScrollBar()
-            
-            new_x = x_fraction * self.display_image.width
-            new_y = y_fraction * self.display_image.height
-            
-            canvas_width = self.scroll_area.viewport().width()
-            canvas_height = self.scroll_area.viewport().height()
-            
-            # Center the view on the point new_x, new_y
-            h_bar.setValue(int(max(0, new_x - canvas_width / 2)))
-            v_bar.setValue(int(max(0, new_y - canvas_height / 2)))
 
     def _rename_current_image(self, old_name, new_name):
         try:
@@ -1726,10 +1751,7 @@ class ThumbnailArea(QScrollArea):
         self._scroll_position = value
         if self.refresh_job:
             self.refresh_job.stop()
-        self.refresh_job = QTimer()
-        self.refresh_job.setSingleShot( True )
-        self.refresh_job.timeout.connect( self._on_scroll_debounce_helper )
-        self.refresh_job.start(50)
+        self.refresh_job = make_debounced_timer( self, 50, self._on_scroll_debounce_helper )
     
     def resizeEvent(self, event):
         super().resizeEvent( event )
@@ -1752,15 +1774,14 @@ class ThumbnailArea(QScrollArea):
         self._render_viewport()
 
     def regrid(self):
-        global watch_for_changes
-        old_value = watch_for_changes
-        watch_for_changes = False
+        old_value = get_watch_for_changes()
+        set_watch_for_changes(False)
         try:
             self.grid.update_file_list()
             self.redraw()
         except Exception as e:
             log_error(f"something happened: {e}")
-        watch_for_changes = old_value
+        set_watch_for_changes(old_value)
 
     def shutdown(self):
         """Cleanup resources."""
@@ -2077,11 +2098,13 @@ class BreadCrumNavigator(QWidget):
     def _handle_drop(self, source_button, target_button):
         # Get the picker (go up hierarchy: BreadCrumNavigator -> _top_frame -> central_widget -> ImagePicker)
         picker = self.parent().parent().parent()
-        picker.master.move_selected_files_to_directory(source_button.img_path, target_button.path)
-        
+        target_dir = resolve_target_dir(target_button)
+        picker.master.move_selected_files_to_directory(source_button.img_path, target_dir)
+
     def _handle_right_drop(self, source_button, target_button):
         picker = self.parent().parent().parent()
-        picker.master.move_file_to_directory(source_button.img_path, target_button.path)
+        target_dir = resolve_target_dir(target_button)
+        picker.master.move_file_to_directory(source_button.img_path, target_dir)
 
     def _trigger_navigate(self, path):
         if self._on_navigate_callback:
@@ -2095,7 +2118,7 @@ class BreadCrumNavigator(QWidget):
         self._press_x = QCursor.pos().x()
         self._press_y = QCursor.pos().y()
         self._active_button = button
-        self._long_press_timer = QTimer()
+        self._long_press_timer = QTimer(self)
         self._long_press_timer.setSingleShot(True)
         self._long_press_timer.timeout.connect(lambda: self._on_long_press_timeout(button))
         self._long_press_timer.start(self._LONG_PRESS_THRESHOLD_MS)
@@ -2420,19 +2443,11 @@ class ImagePicker(QMainWindow):
         return ghost
 
     def _handle_drop(self, source_button, target_widget):
-        # target_widget could be the picker, the scroll area, or the grid - get image_dir appropriately
-        if hasattr(target_widget, 'image_dir'):
-            target_dir = target_widget.image_dir
-        else:
-            target_dir = self.image_dir
+        target_dir = resolve_target_dir(target_widget, self.image_dir)
         self.master.move_selected_files_to_directory(source_button.img_path, target_dir)
-        
+
     def _handle_right_drop(self, source_button, target_widget):
-        # target_widget could be the picker, the scroll area, or the grid - get image_dir appropriately
-        if hasattr(target_widget, 'image_dir'):
-            target_dir = target_widget.image_dir
-        else:
-            target_dir = self.image_dir
+        target_dir = resolve_target_dir(target_widget, self.image_dir)
         self.master.move_file_to_directory(source_button.img_path, target_dir)
 
     def _exec_cmd_for_image(self, button):
@@ -2555,11 +2570,9 @@ class ImagePicker(QMainWindow):
     def _update_thumbnail_width(self, value):
         if self.update_thumbnail_job_id:
             self.update_thumbnail_job_id.stop()
-        self.update_thumbnail_job_id = QTimer()
-        self.update_thumbnail_job_id.setSingleShot(True)
         value = self.snap_thumbnail_width( value )
-        self.update_thumbnail_job_id.timeout.connect(lambda: self._do_update_thumbnail_width(value))
-        self.update_thumbnail_job_id.start(400)
+        self.update_thumbnail_job_id = make_debounced_timer(
+            self, 400, lambda: self._do_update_thumbnail_width(value) )
 
     def _do_update_thumbnail_width(self, value):
         self.thumbnail_slider.blockSignals(True)
@@ -2658,10 +2671,7 @@ class ImagePicker(QMainWindow):
                     self.size_menu_button.setText("Size:")
                     self.thumbnail_slider.setValue(self.thumbnail_width)
                     self.thumbnail_slider.setVisible(True)
-        self.update_sizing_mode_timer = QTimer()
-        self.update_sizing_mode_timer.setSingleShot(True)
-        self.update_sizing_mode_timer.timeout.connect( self.book_sizing_mode )
-        self.update_sizing_mode_timer.start(600)
+        self.update_sizing_mode_timer = make_debounced_timer( self, 600, self.book_sizing_mode )
 
             
     def wheelEvent(self, event):
@@ -2877,7 +2887,7 @@ class ImageManager(QMainWindow):
             self.open_images_from_info()
         
         self.command_field._set_index(self.current_index)
-        if self.ephemeral and ephemeral_path:
+        if self.ephemeral:
             if os.path.isfile(ephemeral_path):
                 # For files, ambient dir is the file's parent directory
                 ambient_dir = os.path.dirname(os.path.abspath(ephemeral_path))
@@ -2923,7 +2933,7 @@ class ImageManager(QMainWindow):
                     self.app_settings = json.load(f)
             else:
                 self.app_settings = {}
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             log_error(f"Error loading app settings, initializing defaults: {e}")
             self.app_settings = {}
 
@@ -3095,25 +3105,19 @@ class ImageManager(QMainWindow):
         self.execute_command(self.command_field.current_command())
 
     def execute_current_command_with_args(self, args):
-        self.execute_command_with_args(self.command_field.current_command(), [(a, None) for a in args])
+        self.execute_command_with_args(self.command_field.current_command(), [(a, None, None) for a in args])
 
     def broadcast_selection_change(self):
         self.sanitize_selected_files()
         if self.refresh_job:
             self.refresh_job.stop()
-        self.refresh_job = QTimer()
-        self.refresh_job.setSingleShot(True)
-        self.refresh_job.timeout.connect(self.refresh_open_pickers)
-        self.refresh_job.start(50)
+        self.refresh_job = make_debounced_timer( self, 50, self.refresh_open_pickers )
 
     def broadcast_contents_change(self):
         self.sanitize_selected_files()
         if self.regrid_job:
             self.regrid_job.stop()
-        self.regrid_job = QTimer()
-        self.regrid_job.setSingleShot(True)
-        self.regrid_job.timeout.connect(self.regrid_open_pickers)
-        self.regrid_job.start(50)
+        self.regrid_job = make_debounced_timer( self, 50, self.regrid_open_pickers )
 
     def refresh_open_pickers(self):
         self.refresh_job = None
@@ -3128,19 +3132,18 @@ class ImageManager(QMainWindow):
         self.update_button_status()
 
     def regrid_open_pickers(self):
-        global watch_for_changes
-        old_value = watch_for_changes
+        old_value = get_watch_for_changes()
         try:
-            watch_for_changes = False
+            set_watch_for_changes(False)
             log_debug(f"regridding all open pickers.")
             self.regrid_job = None
             for picker in self.open_picker_dialogs:
                 log_debug(f"rigridding picker {picker}")
-                picker._regrid()            
-                self.update_button_status()
+                picker._regrid()
+            self.update_button_status()
         except Exception as e:
             log_debug(f"something has happened: {e}")
-        watch_for_changes = old_value
+        set_watch_for_changes(old_value)
 
     def select_file(self, path, picker_dir=None, picker_cmd=None):
         self.selected_files.append((path, picker_dir, picker_cmd))
@@ -3174,10 +3177,8 @@ class ImageManager(QMainWindow):
     def _update_ui_scale(self, value):
         if self._ui_scale_job:
             self._ui_scale_job.stop()
-        self._ui_scale_job = QTimer()
-        self._ui_scale_job.setSingleShot(True)
-        self._ui_scale_job.timeout.connect(lambda: self._do_update_ui_scale(value / 10.0))
-        self._ui_scale_job.start(400)
+        self._ui_scale_job = make_debounced_timer(
+            self, 400, lambda: self._do_update_ui_scale(value / 10.0) )
 
     def clear_selection(self):
         self.selected_files = []
