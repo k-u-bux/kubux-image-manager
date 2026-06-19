@@ -731,7 +731,7 @@ class BackgroundWorker:
                 else:
                     break
             while self.keep_running and (old_size == self.current_size) and (old_directory == self.current_dir):
-                self.block.wait(2)
+                time.sleep(2)
 
     def __init__(self, path, width):
         self.keep_running = True
@@ -3283,3 +3283,4 @@ if __name__ == "__main__":
     app.setApplicationName("kubux image manager")
     manager = ImageManager(ephemeral_path)
     sys.exit(app.exec())
+qdbus
