@@ -470,6 +470,8 @@ def get_full_size_image(img_path):
         return None
         
 def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
+    if cache_key is None:
+        return None
     thumbnail_size_str = str(thumbnail_max_size)
     thumbnail_cache_subdir = os.path.join(THUMBNAIL_CACHE_ROOT, thumbnail_size_str)
     os.makedirs(thumbnail_cache_subdir, exist_ok=True)
@@ -509,6 +511,8 @@ def pil_to_qpixmap(pil_image):
     return QPixmap.fromImage(qimage.copy())
 
 def get_or_make_qt_by_key(cache_key, img_path, thumbnail_max_size):
+    if cache_key is None:
+        return QPixmap()
     with CACHE_LOCK:
         if cache_key in QT_CACHE:
             QT_CACHE.move_to_end(cache_key)
@@ -566,6 +570,11 @@ class ThumbnailLoader(QObject):
         # Get thumbnail dimensions and resize button to correct size
         thumb_w, thumb_h = get_thumbnail_dimensions( img_path, width )
         btn.setFixedSize( thumb_w + 2 * border, thumb_h + 2 * border )
+        
+        if cache_key is None:
+            # File missing or unreadable: leave the button blank rather than
+            # poison the shared "None.png" cache entry.
+            return
         
         # Check if thumbnail exists in Qt cache already
         with CACHE_LOCK:
@@ -1077,6 +1086,9 @@ class ImageViewer(QMainWindow):
             self.picker_dir = self.picker_cmd = None
         self.scroll_area = None
         self.original_image = get_full_size_image(self.image_path)
+        if self.original_image is None:
+            log_error(f"Cannot load image: {self.image_path}")
+            raise ValueError(f"Cannot load image: {self.image_path}")
         self.display_image = None
         self.photo_image = None
 
@@ -1243,10 +1255,14 @@ class ImageViewer(QMainWindow):
  
     def set_image ( self, path ):
         if path:
+            new_image = get_full_size_image(path)
+            if new_image is None:
+                log_error(f"Cannot load image, skipping: {path}")
+                return
             self.image_path = path
             self.file_name = os.path.basename(self.image_path)
             self.dir_name = os.path.dirname(self.image_path)
-            self.original_image = get_full_size_image(self.image_path)
+            self.original_image = new_image
             self.display_image = None
             self.photo_image = None
             ow, oh = self.original_image.size
@@ -1609,6 +1625,7 @@ class ThumbnailArea(QScrollArea):
         visible_middle_row = visible_start_row + ( ( visible_end_row - visible_start_row ) // 2 )
         visible_start_row = max( 0, visible_start_row - self._buffer_rows )
         visible_end_row = max( 0, min( self._rows - 1, visible_end_row + self._buffer_rows ) )
+        visible_middle_row = max( visible_start_row, min( visible_middle_row, visible_end_row ) )
         return visible_start_row, visible_middle_row, visible_end_row
     
    
@@ -2924,7 +2941,11 @@ class ImageManager(QMainWindow):
 
 
     def open_image(self, image_info):
-        dummy = ImageViewer(self, image_info)
+        try:
+            dummy = ImageViewer(self, image_info)
+        except ValueError:
+            log_error(f"Not opening viewer for unloadable image: {image_info[0]}")
+            return
         self.open_images.append(dummy)
 
     def _load_app_settings(self):
@@ -2944,13 +2965,17 @@ class ImageManager(QMainWindow):
         self.current_index = int(self.app_settings.get("current_index", 1))
         raw = self.app_settings.get("selected_files", [])
         self.selected_files = []
-        for item in raw:
-            if len(item) >= 3:
-                self.selected_files.append((item[0], item[1], item[2]))
-            elif len(item) == 2:
-                self.selected_files.append((item[0], None, None))
-            else:
-                self.selected_files.append((item[0], None, None))
+        try:
+            for item in raw:
+                if not isinstance(item, (list, tuple)) or len(item) < 1:
+                    continue
+                if len(item) >= 3:
+                    self.selected_files.append((item[0], item[1], item[2]))
+                else:
+                    self.selected_files.append((item[0], None, None))
+        except Exception as e:
+            log_error(f"Error parsing selected_files from settings, ignoring: {e}")
+            self.selected_files = []
         self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider", 0 ])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
         self.open_image_info = self.app_settings.get("open_image_info", [])
@@ -3283,4 +3308,3 @@ if __name__ == "__main__":
     app.setApplicationName("kubux image manager")
     manager = ImageManager(ephemeral_path)
     sys.exit(app.exec())
-qdbus
