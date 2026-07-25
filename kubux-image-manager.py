@@ -2965,17 +2965,13 @@ class ImageManager(QMainWindow):
         self.current_index = int(self.app_settings.get("current_index", 1))
         raw = self.app_settings.get("selected_files", [])
         self.selected_files = []
-        try:
-            for item in raw:
-                if not isinstance(item, (list, tuple)) or len(item) < 1:
-                    continue
-                if len(item) >= 3:
-                    self.selected_files.append((item[0], item[1], item[2]))
-                else:
-                    self.selected_files.append((item[0], None, None))
-        except Exception as e:
-            log_error(f"Error parsing selected_files from settings, ignoring: {e}")
-            self.selected_files = []
+        for item in raw:
+            if len(item) >= 3:
+                self.selected_files.append((item[0], item[1], item[2]))
+            elif len(item) == 2:
+                self.selected_files.append((item[0], None, None))
+            else:
+                self.selected_files.append((item[0], None, None))
         self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider", 0 ])
         self.open_picker_info = self.app_settings.get("open_picker_info", [])
         self.open_image_info = self.app_settings.get("open_image_info", [])
