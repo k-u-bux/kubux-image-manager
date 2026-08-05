@@ -1246,10 +1246,12 @@ class ImageViewer(QMainWindow):
 
 
     def _do_rotate ( self ):
+        self.fit_to_window = False
         self.rotation = ( self.rotation + 1 ) % 4
         self._update_image()
                 
     def _toggle_flip ( self ):
+        self.fit_to_window = False
         self.flip = not self.flip
         self._update_image()
 
