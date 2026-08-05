@@ -1233,15 +1233,12 @@ class ImageViewer(QMainWindow):
         self.display_image = self.original_image
         if self.flip:
             self.display_image = self.display_image.transpose( Image.FLIP_LEFT_RIGHT )
-            dummy = new_width
-            new_width = new_height 
-            new_height = dummy
-        if self.rotation > 0:
-            self.display_image = self.display_image.transpose( IMAGE_TRANSFORM[ self.rotation ] )
         self.display_image = self.display_image.resize(
             (new_width, new_height), 
             Image.LANCZOS
         )
+        if self.rotation > 0:
+            self.display_image = self.display_image.transpose( IMAGE_TRANSFORM[ self.rotation ] )
 
         pixmap = pil_to_qpixmap(self.display_image)
         self.canvas.setPixmap(pixmap)
