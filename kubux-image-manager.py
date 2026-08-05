@@ -1348,11 +1348,13 @@ class ImageViewer(QMainWindow):
             self.canvas.setCursor(Qt.ArrowCursor)
 
     def _on_mouse_wheel(self, event):
+        # log_debug(f"X = {event.position().x()}, Y = {event.position().y()}")
         delta = event.angleDelta().y()
         if delta > 0:
             self._zoom_in(event.position().x(), event.position().y())
         else:
             self._zoom_out(event.position().x(), event.position().y())
+
 
     def resizeEvent(self, event):
         if self.fit_to_window:
@@ -1361,7 +1363,6 @@ class ImageViewer(QMainWindow):
 
     def _zoom(self, factor, x=None, y=None):
         """Apply a zoom factor, optionally keeping (x, y) centered.
-
         x and y are image coordinates (position within the QLabel which is sized
         to the image). Qt gives us image coords directly; no scroll offset needed.
         """
@@ -1371,22 +1372,19 @@ class ImageViewer(QMainWindow):
         if x is not None and y is not None:
             x_fraction = x / self.display_image.width
             y_fraction = y / self.display_image.height
+            h_bar = self.scroll_area.horizontalScrollBar()
+            v_bar = self.scroll_area.verticalScrollBar()
+            cursor_vp_x = x - h_bar.value()   # cursor offset within viewport
+            cursor_vp_y = y - v_bar.value()
 
         self._update_image()
 
         if x is not None and y is not None:
-            h_bar = self.scroll_area.horizontalScrollBar()
-            v_bar = self.scroll_area.verticalScrollBar()
-
             new_x = x_fraction * self.display_image.width
             new_y = y_fraction * self.display_image.height
+            h_bar.setValue(int(max(0, new_x - cursor_vp_x)))
+            v_bar.setValue(int(max(0, new_y - cursor_vp_y)))
 
-            canvas_width = self.scroll_area.viewport().width()
-            canvas_height = self.scroll_area.viewport().height()
-
-            # Center the view on the point new_x, new_y
-            h_bar.setValue(int(max(0, new_x - canvas_width / 2)))
-            v_bar.setValue(int(max(0, new_y - canvas_height / 2)))
 
     def _zoom_in(self, x=None, y=None):
         self._zoom(1.25, x, y)
