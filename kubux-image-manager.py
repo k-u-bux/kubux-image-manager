@@ -72,6 +72,13 @@ VIEWER_MIN_FRACTION = 0.125
 VIEWER_MAX_FRACTION = 0.50
 APP_SETTINGS_FILE = os.path.join(CONFIG_DIR, "app_settings.json")    
 
+IMAGE_TRANSFORM = [
+    None,                       # 0: identity
+    Image.ROTATE_90,            # 1
+    Image.ROTATE_180,           # 2
+    Image.ROTATE_270            # 3
+]
+
 os.makedirs(THUMBNAIL_CACHE_ROOT, exist_ok=True)
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
@@ -1080,8 +1087,10 @@ class ImageViewer(QMainWindow):
         self.zoom_factor = image_info[4]
         self.stored_scroll_y = image_info[5]
         self.stored_scroll_x = image_info[6]
-        if len(image_info) > 7 and isinstance(image_info[7], (list, tuple)):
-            self.picker_dir, self.picker_cmd = image_info[7]
+        self.rotation = image_info[7]
+        self.flip = image_info[8]
+        if len(image_info) > 9 and isinstance(image_info[9], (list, tuple)):
+            self.picker_dir, self.picker_cmd = image_info[9]
         else:
             self.picker_dir = self.picker_cmd = None
         self.scroll_area = None
@@ -1175,9 +1184,9 @@ class ImageViewer(QMainWindow):
         scroll_x = self.scroll_area.horizontalScrollBar().value()
         scroll_y = self.scroll_area.verticalScrollBar().value()
         if self.picker_dir:
-            return self.image_path, geom, self.is_fullscreen, self.fit_to_window, self.zoom_factor, scroll_y, scroll_x, (self.picker_dir, self.picker_cmd)
+            return self.image_path, geom, self.is_fullscreen, self.fit_to_window, self.zoom_factor, scroll_y, scroll_x, self.rotation, self.flip, (self.picker_dir, self.picker_cmd)
         else:
-            return self.image_path, geom, self.is_fullscreen, self.fit_to_window, self.zoom_factor, scroll_y, scroll_x, None
+            return self.image_path, geom, self.is_fullscreen, self.fit_to_window, self.zoom_factor, scroll_y, scroll_x, self.rotation, self.flip, None
 
     def set_screen_mode(self, is_fullscreen):
         if is_fullscreen:
@@ -1221,7 +1230,13 @@ class ImageViewer(QMainWindow):
             new_width = int(orig_width * self.zoom_factor)
             new_height = int(orig_height * self.zoom_factor)
 
-        self.display_image = self.original_image.resize(
+        self.display_image = self.original_image
+        if self.flip:
+            self.display_image = self.display_image.transpose( Image.FLIP_LEFT_RIGHT )
+        if self.rotation > 0:
+            self.display_image = self.display_image.transpose( IMAGE_TRANSFORM[ self.rotation ] )
+
+        self.display_image = self.display_image.resize(
             (new_width, new_height), 
             Image.LANCZOS
         )
@@ -1229,6 +1244,14 @@ class ImageViewer(QMainWindow):
         self.canvas.setPixmap(pixmap)
         self.canvas.resize(pixmap.size())
 
+
+    def _do_rotate ( self ):
+        self.rotation = ( self.rotation + 1 ) % 4
+        self._update_image()
+                
+    def _toggle_flip ( self ):
+        self.flip = not self.flip
+        self._update_image()
 
     def file_list ( self ):
         if self.picker_dir and self.picker_cmd:
@@ -1311,7 +1334,9 @@ class ImageViewer(QMainWindow):
             self.fit_to_window = True
             self._update_image()
         elif key == Qt.Key_F:
-            self.toggle_fullscreen()
+            self._toggle_flip()
+        elif key == Qt.Key_R:
+            self._do_rotate()
         elif key == Qt.Key_F11:
             self.toggle_fullscreen()
         elif key == Qt.Key_Escape:
@@ -3242,13 +3267,13 @@ class ImageManager(QMainWindow):
             traceback.print_exc()
 
     def open_image_file(self, file_path, picker_dir=None, picker_cmd=None):
-        image_info = [file_path, None, False, True, 0, 0, 0]
+        image_info = [file_path, None, False, True, 0, 0, 0, 0, 0]
         if picker_dir and picker_cmd:
             image_info.append((picker_dir, picker_cmd))
         self.open_image(image_info)
 
     def fullscreen_image_file(self, file_path, picker_dir=None, picker_cmd=None):
-        image_info = [file_path, None, True, True, 0, 0, 0]
+        image_info = [file_path, None, True, True, 0, 0, 0, 0, 0]
         if picker_dir and picker_cmd:
             image_info.append((picker_dir, picker_cmd))
         self.open_image(image_info)
