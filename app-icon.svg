@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <!-- tile -->
+  <rect x="2" y="2" width="44" height="44" rx="10" fill="#00897B"/>
+  <!-- back photo (tilted) -->
+  <rect x="12.5" y="8.5" width="26" height="19" rx="3" fill="#B2DFDB"/>
+  <!-- front photo -->
+  <rect x="9" y="15" width="30" height="22" rx="3" fill="#FFFFFF"/>
+  <!-- sun -->
+  <circle cx="17" cy="22" r="3" fill="#00897B"/>
+  <!-- mountains -->
+  <path d="M 11 34 L 19 25 L 24 30 L 29 23 L 37 34 Z" fill="#00897B"/>
+  <!-- marked corner dot -->
+  <rect x="31" y="6" width="4" height="4" rx="1.2" fill="#FF0000"/>
+</svg>
