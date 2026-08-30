@@ -29,7 +29,7 @@
           
           src = ./.;
           
-          buildInputs = [ pythonEnv pkgs.imagemagick ];
+          buildInputs = [ pythonEnv pkgs.librsvg ];
           nativeBuildInputs = [ pkgs.makeWrapper ];
           
           installPhase = ''
@@ -52,10 +52,15 @@
             # Copy desktop file
             cp kubux-image-manager.desktop $out/share/applications/
 
-            # Make icons for all sizes
+            # primary icon: scalable SVG
+            mkdir -p $out/share/icons/hicolor/scalable/apps
+            cp app-icon.svg $out/share/icons/hicolor/scalable/apps/kubux-image-manager.svg
+
+            # fallback renderings for desktops that do not handle SVG
             for size in 16x16 22x22 24x24 32x32 48x48 64x64 96x96 128x128 192x192 256x256; do
- 	          mkdir -p $out/share/icons/hicolor/$size/apps
-	          magick convert app-icon.png -resize $size $out/share/icons/hicolor/$size/apps/kubux-image-manager.png
+              mkdir -p $out/share/icons/hicolor/$size/apps
+              w=''${size%x*}; h=''${size#*x}
+              rsvg-convert -w $w -h $h -o $out/share/icons/hicolor/$size/apps/kubux-image-manager.png app-icon.svg
             done
           '';
           
