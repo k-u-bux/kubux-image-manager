@@ -52,13 +52,27 @@ from watchdog.observers import Observer
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor
 
+# Register Pillow plugins for extra decode formats (HEIC/HEIF via pillow-heif,
+# JXL via jxlpy). Importing is all jxlpy needs; pillow-heif requires an
+# explicit opener registration.
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
+try:
+    import jxlpy.JXLImagePlugin  # noqa: F401 - registers the JXL plugin on import
+except ImportError:
+    pass
+
 
 # --- configuration ---
 
 SUPPORTED_IMAGE_EXTENSIONS = (
     '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tif', '.tiff', '.webp',
     '.ico', '.icns', '.avif', '.dds', '.msp', '.pcx', '.ppm',
-    '.pbm', '.pgm', '.sgi', '.tga', '.xbm', '.xpm', '.svg'
+    '.pbm', '.pgm', '.sgi', '.tga', '.xbm', '.xpm', '.svg',
+    '.heic', '.heif', '.hif', '.jxl', '.pdf', '.eps'
 )
 
 CACHE_SIZE = 1000
@@ -526,9 +540,72 @@ class SvgRasterSource(RasterSource):
         return Image.open(io.BytesIO(png))
 
 
+class PdfRasterSource(RasterSource):
+    """First page of a PDF, rendered via poppler's pdftocairo.
+    Natural size = page size in points (1pt = 1px at the default 72 dpi)."""
+
+    _PAGE_SIZE_RE = re.compile(r'^Page size:\s+([\d.]+) x ([\d.]+) pts', re.MULTILINE)
+
+    def _read_natural_size(self):
+        out = subprocess.run(["pdfinfo", self.path],
+                             check=True, capture_output=True, text=True).stdout
+        m = self._PAGE_SIZE_RE.search(out)
+        if m is None:
+            raise ValueError(f"No page size in pdfinfo output for {self.path}")
+        return int(float(m.group(1))), int(float(m.group(2)))
+
+    def _render_exact(self, w, h):
+        png = subprocess.run(
+            ["pdftocairo", "-png", "-singlefile", "-transp",
+             "-scale-to-x", str(w), "-scale-to-y", str(h),
+             self.path, "-"],
+            check=True, capture_output=True).stdout
+        return Image.open(io.BytesIO(png))
+
+
+class EpsRasterSource(RasterSource):
+    """EPS via ghostscript. Natural size = BoundingBox in points; the lower
+    left corner may be non-zero, so rendering translates it to the origin."""
+
+    EPS_DEFAULT_SIZE = 512   # BoundingBox missing or (atend); one rule, here only
+    _BB_RE = re.compile(
+        r'^%%BoundingBox:\s*(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s*$', re.MULTILINE)
+
+    def _read_natural_size(self):
+        with open(self.path, 'r', encoding='utf-8', errors='replace') as fh:
+            head = fh.read(65536)
+        m = self._BB_RE.search(head)
+        if m is None:
+            return self.PDF_DEFAULT_SIZE, self.PDF_DEFAULT_SIZE
+        x0, y0, x1, y1 = (int(g) for g in m.groups())
+        return max(1, x1 - x0), max(1, y1 - y0)
+
+    def _render_exact(self, w, h):
+        m = self._BB_RE.search(open(self.path, 'r', errors='replace').read(65536))
+        if m is None:
+            x0, y0, nw, nh = 0, 0, w, h
+        else:
+            x0, y0, x1, y1 = (int(g) for g in m.groups())
+            nw, nh = max(1, x1 - x0), max(1, y1 - y0)
+        # scale the artwork to (w, h) via dpi, not a fixed device window
+        dpi = 72.0 * w / nw
+        png = subprocess.run(
+            ["gs", "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER",
+             "-sDEVICE=png16m", f"-r{dpi:.4f}", "-sOutputFile=-",
+             f"-g{w}x{h}",
+             "-c", f"{x0} {-y0} translate", "-f", self.path],
+            check=True, capture_output=True).stdout
+        return Image.open(io.BytesIO(png))
+
+
 def make_raster_source(path):
-    if path.lower().endswith('.svg'):
+    lower = path.lower()
+    if lower.endswith('.svg'):
         return SvgRasterSource(path)
+    if lower.endswith('.pdf'):
+        return PdfRasterSource(path)
+    if lower.endswith('.eps'):
+        return EpsRasterSource(path)
     return PilRasterSource(path)
 
 

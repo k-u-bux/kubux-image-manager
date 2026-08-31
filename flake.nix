@@ -16,6 +16,8 @@
           tkinter
           pyside6
           pillow
+          pillow-heif
+          jxlpy
           requests
           watchdog
           python-dotenv
@@ -48,7 +50,7 @@
             makeWrapper ${pythonEnv}/bin/python $out/bin/kubux-image-manager \
               --add-flags "$out/bin/kubux-image-manager.py" \
               --set-default TMPDIR "/tmp" \
-              --prefix PATH : ${pkgs.librsvg}/bin
+              --prefix PATH : ${pkgs.librsvg}/bin:${pkgs.poppler_utils}/bin:${pkgs.ghostscript}/bin
 	    
             # Copy desktop file
             cp kubux-image-manager.desktop $out/share/applications/
@@ -80,6 +82,8 @@
 	          python3
             pythonEnv
             librsvg
+            poppler_utils
+            ghostscript
             imagemagick
             # Additional development tools
 	          jetbrains.pycharm-community
