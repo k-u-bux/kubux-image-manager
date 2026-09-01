@@ -47,8 +47,7 @@
             # Create wrapper using makeWrapper for proper desktop integration
             makeWrapper ${pythonEnv}/bin/python $out/bin/kubux-image-manager \
               --add-flags "$out/bin/kubux-image-manager.py" \
-              --set-default TMPDIR "/tmp" \
-              --prefix PATH : ${pkgs.librsvg}/bin
+              --set-default TMPDIR "/tmp"
 	    
             # Copy desktop file
             cp kubux-image-manager.desktop $out/share/applications/
@@ -79,7 +78,6 @@
           buildInputs = with pkgs; [
 	          python3
             pythonEnv
-            librsvg
             imagemagick
             # Additional development tools
 	          jetbrains.pycharm-community

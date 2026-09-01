@@ -15,7 +15,6 @@
 import traceback
 import shutil
 import hashlib
-import io
 import json
 import os
 import re
@@ -58,7 +57,7 @@ from concurrent.futures import ThreadPoolExecutor
 SUPPORTED_IMAGE_EXTENSIONS = (
     '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tif', '.tiff', '.webp',
     '.ico', '.icns', '.avif', '.dds', '.msp', '.pcx', '.ppm',
-    '.pbm', '.pgm', '.sgi', '.tga', '.xbm', '.xpm', '.svg'
+    '.pbm', '.pgm', '.sgi', '.tga', '.xbm', '.xpm'
 )
 
 CACHE_SIZE = 1000
@@ -432,10 +431,14 @@ def resize_image(image, target_width, target_height):
 
 def get_thumbnail_dimensions(img_path, max_size):
     """Quickly read image dimensions and calculate thumbnail size without loading full image."""
-    source = get_source(img_path)
-    if source is None:
+    try:
+        with Image.open(img_path) as img:
+            orig_w, orig_h = img.size
+        # Use the same calculation logic as resize_image to ensure consistency
+        return calculate_thumbnail_dimensions(orig_w, orig_h, max_size, max_size)
+    except Exception as e:
+        log_error(f"Error reading dimensions for {img_path}: {e}")
         return max_size, max_size  # fallback to square
-    return calculate_thumbnail_dimensions(*source.natural_size(), max_size, max_size)
 
 def uniq_file_id(img_path, width=-1):
     try:
@@ -452,120 +455,22 @@ def uniq_file_id(img_path, width=-1):
 
 CACHE_LOCK = threading.Lock()
 
-SOURCE_CACHE = OrderedDict()
-DECODE_CACHE = OrderedDict()
+PIL_CACHE = OrderedDict()
 QT_CACHE = OrderedDict()
-
-
-# --- raster sources ---
-# A RasterSource is a file that can produce pixels. It stores only the path
-# plus lazily-derived, immutable metadata; all pixel state stays in the
-# caches. render() is pure: same arguments, same raster, no threading
-# hazards.
-
-class RasterSource:
-    def __init__(self, path):
-        self.path = path
-        self._natural_size = None
-
-    def natural_size(self):
-        """Intrinsic (width, height). Deterministic; memoized."""
-        if self._natural_size is None:
-            self._natural_size = self._read_natural_size()
-        return self._natural_size
-
-    def render(self, target_width, target_height):
-        """Rasterize at the largest size that fits within
-        (target_width, target_height), aspect preserved."""
-        w, h = calculate_thumbnail_dimensions(self.natural_size()[0],
-                                              self.natural_size()[1],
-                                              target_width, target_height)
-        return self._render_exact(w, h)
-
-    def _read_natural_size(self):
-        raise NotImplementedError
-
-    def _render_exact(self, w, h):
-        raise NotImplementedError
-
-
-class PilRasterSource(RasterSource):
-    def _read_natural_size(self):
-        with Image.open(self.path) as img:   # header read, no pixels
-            return img.size
-
-    def _render_exact(self, w, h):
-        return resize_image(get_full_size_image(self.path), w, h)
-
-
-class SvgRasterSource(RasterSource):
-    # width/height-less SVGs have no intrinsic size; one rule, here only
-    SVG_DEFAULT_SIZE = 512
-
-    _SVG_TAG_RE = re.compile(r'<svg\b[^>]*>', re.IGNORECASE)
-    _SVG_ATTR_RE = re.compile(r'\b(width|height)\s*=\s*["\']\s*([\d.]+)', re.IGNORECASE)
-
-    def _read_natural_size(self):
-        try:
-            with open(self.path, 'r', encoding='utf-8', errors='replace') as fh:
-                head = fh.read(65536)
-            m = self._SVG_TAG_RE.search(head)
-            if m is not None:
-                attrs = dict(self._SVG_ATTR_RE.findall(m.group(0)))
-                if 'width' in attrs and 'height' in attrs:
-                    return int(float(attrs['width'])), int(float(attrs['height']))
-        except Exception as e:
-            log_error(f"Error reading SVG header for {self.path}: {e}")
-        return self.SVG_DEFAULT_SIZE, self.SVG_DEFAULT_SIZE
-
-    def _render_exact(self, w, h):
-        png = subprocess.run(
-            ["rsvg-convert", "-w", str(w), "-h", str(h), "--keep-aspect-ratio",
-             self.path],
-            check=True, capture_output=True).stdout
-        return Image.open(io.BytesIO(png))
-
-
-def make_raster_source(path):
-    if path.lower().endswith('.svg'):
-        return SvgRasterSource(path)
-    return PilRasterSource(path)
-
-
-def get_source(img_path):
-    cache_key = uniq_file_id(img_path)
-    if cache_key is None:
-        return None
-    with CACHE_LOCK:
-        if cache_key in SOURCE_CACHE:
-            SOURCE_CACHE.move_to_end(cache_key)
-            return SOURCE_CACHE[cache_key]
-    try:
-        source = make_raster_source(img_path)
-        source.natural_size()          # eager: fails fast on broken files
-        with CACHE_LOCK:
-            SOURCE_CACHE[cache_key] = source
-            if len(SOURCE_CACHE) > CACHE_SIZE:
-                SOURCE_CACHE.popitem(last=False)
-        return source
-    except Exception as e:
-        log_error(f"Error loading source for {img_path}: {e}")
-        return None
-
 
 def get_full_size_image(img_path):
     cache_key = uniq_file_id(img_path)
     with CACHE_LOCK:
-        if cache_key in DECODE_CACHE:
-            DECODE_CACHE.move_to_end(cache_key)
-            return DECODE_CACHE[cache_key]
+        if cache_key in PIL_CACHE:
+            PIL_CACHE.move_to_end(cache_key)
+            return PIL_CACHE[cache_key]
     try:
         full_image = Image.open(img_path)
         full_image.load()
         with CACHE_LOCK:
-            DECODE_CACHE[cache_key] = full_image
-            if len(DECODE_CACHE) > CACHE_SIZE:
-                DECODE_CACHE.popitem(last=False)
+            PIL_CACHE[cache_key] = full_image
+            if len(PIL_CACHE) > CACHE_SIZE:
+                PIL_CACHE.popitem(last=False)
         return full_image
     except Exception as e:
         log_error(f"Error loading image for {img_path}: {e}")
@@ -586,10 +491,7 @@ def get_or_make_pil_by_key(cache_key, img_path, thumbnail_max_size):
             log_error(f"Error loading thumbnail for {img_path}: {e}")
     if pil_image_thumbnail is None:
         try:
-            source = get_source(img_path)
-            if source is None:
-                return None
-            pil_image_thumbnail = source.render(thumbnail_max_size, thumbnail_max_size)
+            pil_image_thumbnail = resize_image(get_full_size_image(img_path), thumbnail_max_size, thumbnail_max_size)
             tmp_path = os.path.join(os.path.dirname(cached_thumbnail_path), "tmp-" + os.path.basename(cached_thumbnail_path))
             pil_image_thumbnail.save(tmp_path)
             os.replace(tmp_path, cached_thumbnail_path)
@@ -1192,17 +1094,18 @@ class ImageViewer(QMainWindow):
         else:
             self.picker_dir = self.picker_cmd = None
         self.scroll_area = None
-        self.source = get_source(self.image_path)
-        if self.source is None:
+        self.original_image = get_full_size_image(self.image_path)
+        if self.original_image is None:
             log_error(f"Cannot load image: {self.image_path}")
             raise ValueError(f"Cannot load image: {self.image_path}")
         self.display_image = None
+        self.photo_image = None
 
         if self.window_geometry is not None:
             self.restoreGeometry(QByteArray.fromBase64(self.window_geometry.encode()))
         else:
             # Size to image dimensions, clamped to min/max screen fraction, aspect-preserved
-            ow, oh = self.source.natural_size()
+            ow, oh = self.original_image.size
             screen = QGuiApplication.primaryScreen().availableGeometry()
             min_dim = int(screen.width() * VIEWER_MIN_FRACTION)
             max_dim = int(screen.width() * VIEWER_MAX_FRACTION)
@@ -1219,7 +1122,7 @@ class ImageViewer(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        ow, oh = self.source.natural_size()
+        ow, oh = self.original_image.size
         self.filename_widget = EditableLabelWithCopy(
             central_widget,
             initial_text=self.file_name,
@@ -1307,7 +1210,7 @@ class ImageViewer(QMainWindow):
         self.setWindowTitle(title)
 
     def _update_image(self):
-        if self.source is None:
+        if not self.original_image:
             return
         canvas_width = self.scroll_area.viewport().width()
         canvas_height = self.scroll_area.viewport().height()
@@ -1315,7 +1218,7 @@ class ImageViewer(QMainWindow):
             canvas_width = 800
         if canvas_height <= 1:
             canvas_height = 600
-        orig_width, orig_height = self.source.natural_size()
+        orig_width, orig_height = self.original_image.size
         if self.fit_to_window:
             scale_width = canvas_width / orig_width
             scale_height = canvas_height / orig_height
@@ -1327,9 +1230,13 @@ class ImageViewer(QMainWindow):
             new_width = int(orig_width * self.zoom_factor)
             new_height = int(orig_height * self.zoom_factor)
 
-        self.display_image = self.source.render(new_width, new_height)
+        self.display_image = self.original_image
         if self.flip:
             self.display_image = self.display_image.transpose( Image.FLIP_LEFT_RIGHT )
+        self.display_image = self.display_image.resize(
+            (new_width, new_height), 
+            Image.LANCZOS
+        )
         if self.rotation > 0:
             self.display_image = self.display_image.transpose( IMAGE_TRANSFORM[ self.rotation ] )
 
@@ -1373,16 +1280,17 @@ class ImageViewer(QMainWindow):
  
     def set_image ( self, path ):
         if path:
-            new_source = get_source(path)
-            if new_source is None:
+            new_image = get_full_size_image(path)
+            if new_image is None:
                 log_error(f"Cannot load image, skipping: {path}")
                 return
             self.image_path = path
             self.file_name = os.path.basename(self.image_path)
             self.dir_name = os.path.dirname(self.image_path)
-            self.source = new_source
+            self.original_image = new_image
             self.display_image = None
-            ow, oh = self.source.natural_size()
+            self.photo_image = None
+            ow, oh = self.original_image.size
             self.filename_widget.set_info( f"{ow}x{oh}" )
             self.filename_widget.set_text( self.file_name )
             self._update_title()
