@@ -1353,7 +1353,8 @@ class ImageViewer(QMainWindow):
 
         self.set_screen_mode(self.is_fullscreen)
         self.show()
-        self.activateWindow()
+        if not getattr(self.master, "_restoring", False):
+            self.activateWindow()
         self.canvas.setFocus()
 
         # Restore scroll position after _update_image has rendered
@@ -2617,7 +2618,8 @@ class ImagePicker(QMainWindow):
         bind_drop(self._gallery_grid, self._handle_drop)
         bind_right_drop(self._gallery_grid, self._handle_right_drop)
         
-        QTimer.singleShot(100, self.activateWindow)
+        if not getattr(self.master, "_restoring", False):
+            QTimer.singleShot(100, self.activateWindow)
         self.show()
 
     def _make_ghost(self, button, x, y):
@@ -3089,23 +3091,22 @@ class ImageManager(QMainWindow):
         self.base_font_size = font_size
         self.main_font = QFont(font_name, int(self.base_font_size * self.ui_scale))
         
-        if self.main_win_geometry:
-            self.restoreGeometry(QByteArray.fromBase64(self.main_win_geometry.encode()))
-        else:
-            self.resize(300, 400)
+        # Default size; real geometry (if any) is restored from the master
+        # entry of window_stack by _restore_window_stack().
+        self.resize(300, 400)
         
         self._create_widgets()
         self.open_picker_dialogs = []
         self.open_images = []
+        self._restoring = False
         
         if self.ephemeral:
             # Ephemeral session: restore settings but not open windows
-            self.open_picker_info = []
-            self.open_image_info = []
             self.current_index = 1
         else:
-            self.open_picker_dialogs_from_info()
-            self.open_images_from_info()
+            self._restoring = True
+            self._restore_window_stack()
+            self._restoring = False
         
         self.command_field._set_index(self.current_index)
         if self.ephemeral:
@@ -3116,32 +3117,43 @@ class ImageManager(QMainWindow):
                 self.open_path(ephemeral_path, ambient_dir, self.new_picker_info[2])
             else:
                 self.open_path(ephemeral_path, self.new_picker_info[1], self.new_picker_info[2])
-        if not self.ephemeral:
+
+    def _restore_window_stack(self):
+        """Re-create windows in saved bottom→top order.
+
+        Mapping a new window lands it on top of the current stack on every
+        WM/compositor — unconditionally, no raise_() request that a WM could
+        refuse. So creating windows from bottom to top in one walk reproduces
+        the saved stacking exactly, and the last window mapped IS the saved
+        topmost; it just needs focus once the WM is ready to accept it.
+        """
+        if not self.window_stack:
             self.show()
-
-    def collect_open_picker_info(self):
-        self.open_picker_info = []
-        for picker in self.open_picker_dialogs:
-            self.open_picker_info.append(picker.get_picker_info())
-        return self.open_picker_info
-
-    def open_picker_dialogs_from_info(self):
-        for picker_info in self.open_picker_info:
-            self.open_picker_dialog(picker_info)
+            return
+        last_shown = None
+        for kind, state in self.window_stack:          # bottom → top
+            if kind == "master":
+                if state:
+                    self.restoreGeometry(QByteArray.fromBase64(state.encode()))
+                self.show()
+                last_shown = self
+            elif kind == "picker":
+                self.open_picker_dialog(state)
+                last_shown = self.open_picker_dialogs[-1]
+            elif kind == "image":
+                before = len(self.open_images)
+                self.open_image(state)                 # may skip an unloadable file
+                if len(self.open_images) > before:
+                    last_shown = self.open_images[-1]
+        if not self.isVisible():
+            self.show()
+        if last_shown is not None:
+            # Fix focus only — never reorders: this window is already topmost.
+            QTimer.singleShot(100, last_shown.activateWindow)
 
     def open_picker_dialog(self, picker_info):
         dummy = ImagePicker(self, picker_info)
         self.open_picker_dialogs.append(dummy)
-
-    def collect_open_image_info(self):
-        self.open_image_info = []
-        for image in self.open_images:
-            self.open_image_info.append(image.get_image_info())
-        return self.open_image_info
-
-    def open_images_from_info(self):
-        for image_info in self.open_image_info:
-            self.open_image(image_info)
 
 
     def open_image(self, image_info):
@@ -3151,6 +3163,56 @@ class ImageManager(QMainWindow):
             log_error(f"Not opening viewer for unloadable image: {image_info[0]}")
             return
         self.open_images.append(dummy)
+
+    def _collect_window_stack(self):
+        """Bottom→top list of our own windows at close time.
+
+        The WM is the only entity that knows the true stacking, so we read it
+        from the WM's own bookkeeping (_NET_CLIENT_LIST_STACKING) where we
+        can, and fall back to spawn-order + last-active-on-top otherwise.
+        Each entry embeds its full window state, so a saved window_stack is
+        self-contained (no parallel index lists to desynchronize).
+        """
+        stack = self._read_wm_stack() or self._fallback_window_stack()
+        result = []
+        for w in stack:
+            if w is self:
+                result.append(["master", self.saveGeometry().toBase64().data().decode()])
+            elif w in self.open_picker_dialogs:
+                result.append(["picker", w.get_picker_info()])
+            elif w in self.open_images:
+                result.append(["image", w.get_image_info()])
+        return result
+
+    def _read_wm_stack(self):
+        """True bottom→top order, from the WM's EWMH bookkeeping. None when
+        the platform/wm can't tell us (Wayland has no global stacking API)."""
+        if QGuiApplication.platformName() != "xcb":
+            return None
+        by_xid = {w.windowHandle().winId(): w
+                  for w in [self] + self.open_picker_dialogs + self.open_images
+                  if w.windowHandle() is not None}
+        if not by_xid:
+            return None
+        try:
+            out = subprocess.run(
+                ["xprop", "-root", "-notype", "_NET_CLIENT_LIST_STACKING"],
+                capture_output=True, text=True, timeout=2).stdout
+        except Exception:
+            return None
+        order = [by_xid[int(tok, 16)] for tok in re.findall(r"0x[0-9a-fA-F]+", out)
+                 if int(tok, 16) in by_xid]
+        return order or None
+
+    def _fallback_window_stack(self):
+        """Wayland / non-EWMH WM: spawn order (master, pickers, viewers) with
+        the currently-active window moved to top — an honest approximation."""
+        stack = [self] + list(self.open_picker_dialogs) + list(self.open_images)
+        active = QApplication.activeWindow()
+        if active in stack:
+            stack.remove(active)
+            stack.append(active)
+        return stack
 
     def _load_app_settings(self):
         try:
@@ -3164,7 +3226,6 @@ class ImageManager(QMainWindow):
             self.app_settings = {}
 
         self.ui_scale = self.app_settings.get("ui_scale", 1.0)
-        self.main_win_geometry = self.app_settings.get("main_win_geometry", None)
         self.commands = self.app_settings.get("commands", "Open: {*}\nFullscreen: {*}\nSetWP: *\nOpen: ${HOME}/Pictures")
         self.current_index = int(self.app_settings.get("current_index", 1))
         raw = self.app_settings.get("selected_files", [])
@@ -3177,8 +3238,7 @@ class ImageManager(QMainWindow):
             else:
                 self.selected_files.append((item[0], None, None))
         self.new_picker_info = self.app_settings.get("new_picker_info", [192, PICTURES_DIR, "ls", None, "slider", 0 ])
-        self.open_picker_info = self.app_settings.get("open_picker_info", [])
-        self.open_image_info = self.app_settings.get("open_image_info", [])
+        self.window_stack = self.app_settings.get("window_stack", None)
         self.list_commands = self.app_settings.get("list_commands", ["ls", "find . -maxdepth 1 -type f"])
 
     def _save_app_settings(self):
@@ -3186,7 +3246,6 @@ class ImageManager(QMainWindow):
             if not hasattr(self, 'app_settings'):
                 self.app_settings = {}
             self.app_settings["ui_scale"] = self.ui_scale
-            self.app_settings["main_win_geometry"] = self.saveGeometry().toBase64().data().decode()
             self.app_settings["commands"] = self.command_field.current_text().rstrip('\n')
             self.app_settings["current_index"] = self.command_field._current_index()
             self.app_settings["selected_files"] = [
@@ -3194,9 +3253,12 @@ class ImageManager(QMainWindow):
                 for path, d, c in self.selected_files
             ]
             self.app_settings["new_picker_info"] = self.new_picker_info
-            self.app_settings["open_picker_info"] = self.collect_open_picker_info()
-            self.app_settings["open_image_info"] = self.collect_open_image_info()
+            self.app_settings["window_stack"] = self._collect_window_stack()
             self.app_settings["list_commands"] = self.list_commands
+            # Drop keys replaced by window_stack (they survive only because an
+            # old file is loaded wholesale into app_settings); never re-emit them.
+            for obsolete in ("main_win_geometry", "open_picker_info", "open_image_info"):
+                self.app_settings.pop(obsolete, None)
 
             with open(APP_SETTINGS_FILE, 'w') as f:
                 json.dump(self.app_settings, f, indent=4)
